@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Camera Shooter</title>
+<title>Rolling Pin Throw</title>
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -19,7 +19,7 @@ user-select: none;
 -webkit-user-select: none;
 }
 
-/* ── CAMERA ─────────────────────────────────────────── */
+/* ── LIVE CAMERA ─────────────────────────────────── */
 #camera {
 position: fixed;
 inset: 0;
@@ -28,148 +28,109 @@ object-fit: cover;
 z-index: 0;
 }
 
-/* vignette darkens edges for FPS immersion */
+/* soft vignette for depth */
 #vignette {
 position: fixed; inset: 0; z-index: 1;
 pointer-events: none;
-background: radial-gradient(ellipse at 50% 44%,
-transparent 36%, rgba(0,0,0,0.68) 100%);
+background: radial-gradient(ellipse at 50% 46%,
+transparent 40%, rgba(0,0,0,0.52) 100%);
 }
 
-/* ── SCREEN FLASH ────────────────────────────────────── */
-#screen-flash {
-position: fixed; inset: 0; z-index: 38;
-pointer-events: none;
-background: rgba(255, 200, 80, 0.22);
-opacity: 0;
-}
-
-/* ── GUN SPRITE ──────────────────────────────────────────
-All positional tuning is done via JS constants below.
-The <img> fills this wrapper.
-─────────────────────────────────────────────────────── */
-#gun-wrap {
+/* ── ROLLING PIN CONTAINER ───────────────────────────
+Positioned at rest near bottom-right, as if held.
+JS rewrites this on resize and animates on throw.
+──────────────────────────────────────────────────── */
+#pin-wrap {
 position: fixed;
 z-index: 20;
 pointer-events: none;
-will-change: transform;
-/* transform-origin is set by JS to the muzzle point so
-recoil pivots naturally around the barrel tip */
+will-change: transform, opacity;
+transform-origin: center center;
 }
 
-#gun-img {
+/* The actual rolling pin image inside the wrapper */
+#pin-img {
 display: block;
 width: 100%;
 height: 100%;
 object-fit: contain;
-/* preserve transparency */
-image-rendering: high-quality;
+/* motion-blur stretch is applied via CSS filter in JS */
+will-change: filter, transform;
 }
 
-/* ── MUZZLE FLASH ────────────────────────────────────── */
-#muzzle-flash {
+/* ── HAND / GRIP SHADOW ──────────────────────────────
+A blurred dark ellipse that makes the pin look grounded
+in the player’s hand before the throw.
+──────────────────────────────────────────────────── */
+#hand-shadow {
 position: fixed;
-z-index: 25;
+z-index: 19;
 pointer-events: none;
-opacity: 0;
-transform: translate(-50%, -50%) scale(0.1);
-width: 110px; height: 110px;
 border-radius: 50%;
-background: radial-gradient(circle,
-#ffffff   0%,
-#ffee88  18%,
-#ff8800  48%,
-transparent 72%
-);
-filter: blur(2.5px);
-mix-blend-mode: screen;
+background: radial-gradient(ellipse at center,
+rgba(0,0,0,0.55) 0%, transparent 70%);
+will-change: transform, opacity;
+transform-origin: center center;
 }
 
-/* softer outer glow ring */
-#muzzle-glow {
-position: fixed;
-z-index: 24;
-pointer-events: none;
-opacity: 0;
-transform: translate(-50%, -50%) scale(0.1);
-width: 190px; height: 190px;
-border-radius: 50%;
-background: radial-gradient(circle,
-rgba(255,150,0,0.55) 0%,
-transparent 65%
-);
-filter: blur(12px);
-mix-blend-mode: screen;
-}
-
-/* ── MUZZLE DEBUG DOT ────────────────────────────────── */
-#muzzle-dot {
+/* ── TAP RIPPLE (throw confirmation) ─────────────────
+Brief radial pulse at the tap point.
+──────────────────────────────────────────────────── */
+.tap-ripple {
 position: fixed;
 z-index: 30;
 pointer-events: none;
-width: 14px; height: 14px;
 border-radius: 50%;
-background: #ff0044;
-border: 2px solid #ffffff;
-transform: translate(-50%, -50%);
-display: none;
-box-shadow: 0 0 6px #ff0044;
+border: 2px solid rgba(255, 230, 180, 0.7);
+width: 10px; height: 10px;
+transform: translate(-50%, -50%) scale(1);
+animation: ripple-expand 0.45s cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+}
+@keyframes ripple-expand {
+0%   { transform: translate(-50%,-50%) scale(1);   opacity: 0.85; }
+100% { transform: translate(-50%,-50%) scale(8);   opacity: 0;    }
 }
 
-/* ── BULLET PROJECTILES ──────────────────────────────── */
-.bullet {
-position: fixed;
-z-index: 22;
-pointer-events: none;
-border-radius: 50%;
-background: radial-gradient(circle,
-#ffffff   0%,
-#ffe566  35%,
-#ff9900  65%,
-transparent 100%
-);
-box-shadow: 0 0 12px 5px rgba(255, 138, 0, 0.85);
-mix-blend-mode: screen;
-will-change: transform, opacity;
-}
-
-/* ── START / PERMISSION SCREEN ───────────────────────── */
+/* ── START SCREEN ────────────────────────────────── */
 #start-screen {
 position: fixed; inset: 0; z-index: 50;
 display: flex; flex-direction: column;
 align-items: center; justify-content: center;
 background: #000;
-gap: 22px;
-transition: opacity 0.5s ease;
+gap: 24px;
+transition: opacity 0.55s ease;
 }
 #start-screen.hidden { opacity: 0; pointer-events: none; }
 
-#start-icon { font-size: 64px; animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse {
-0%, 100% { transform: scale(1);    opacity: 1;   }
-50%       { transform: scale(1.1); opacity: 0.6; }
+#start-icon {
+font-size: 68px;
+animation: bob 2.2s ease-in-out infinite;
 }
-
+@keyframes bob {
+0%, 100% { transform: translateY(0) rotate(-8deg); }
+50%       { transform: translateY(-10px) rotate(8deg); }
+}
 #start-label {
-font-family: ‘Courier New’, monospace;
-font-size: clamp(15px, 3.8vw, 19px);
-letter-spacing: 0.26em;
+font-family: Georgia, ‘Times New Roman’, serif;
+font-size: clamp(16px, 4vw, 21px);
+letter-spacing: 0.18em;
 text-transform: uppercase;
-color: rgba(255,255,255,0.88);
+color: rgba(255, 240, 210, 0.92);
 }
 #start-sub {
-font-family: ‘Courier New’, monospace;
-font-size: 11px;
-letter-spacing: 0.16em;
-color: rgba(255,255,255,0.26);
+font-family: Georgia, serif;
+font-size: 12px;
+letter-spacing: 0.14em;
+color: rgba(255, 255, 255, 0.26);
 text-transform: uppercase;
 }
 #start-error {
 font-family: ‘Courier New’, monospace;
 font-size: 11px;
-color: rgba(255,80,80,0.8);
+color: rgba(255, 100, 80, 0.85);
 text-align: center;
 max-width: 80vw;
+line-height: 1.6;
 display: none;
 }
 </style>
@@ -180,304 +141,471 @@ display: none;
 <video id="camera" autoplay playsinline muted></video>
 
 <div id="vignette"></div>
-<div id="screen-flash"></div>
-<div id="muzzle-flash"></div>
-<div id="muzzle-glow"></div>
-<div id="muzzle-dot"></div>
 
-<!-- ═══════════════════════════════════════════════════════
-     GUN SPRITE
-     ───────────────────────────────────────────────────────
-     GUN_SRC below points to gun.png in the same repo folder.
+<!-- hand grip shadow (sits behind pin) -->
 
-     HOW TO GET A GOOD SPRITE:
-     ─────────────────────────
-     Search Google Images for:
-       "AR-15 first person PNG transparent"
-       "FPS weapon sprite transparent PNG"
-       "free FPS gun overlay transparent"
+<div id="hand-shadow"></div>
 
-     Good free sources:
-       • PNGWing.com  → search "gun first person"
-       • PNGEgg.com   → search "FPS gun transparent"
-       • WikiMedia Commons (public domain weapon renders)
-       • itch.io free asset packs (search "FPS hands weapon")
-         e.g. https://quaternius.com/packs/ultimateFPS.html
+<!-- Rolling pin wrapper + image
+     If rolling-pin.png is present in the repo, it will be used.
+     If not, a high-quality SVG data-URI fallback is used that
+     renders a convincingly realistic wooden rolling pin with
+     proper 3D shading, grain lines, and metal end caps — far
+     better than canvas shapes. -->
 
-     Recommended spec:
-       • PNG with transparent background
-       • At least 800×600px
-       • Shows a held weapon from FPS perspective (hand visible)
-       • Barrel pointing toward upper-left when positioned
-
-     Save the file as:  gun.png
-     Put it in the root of your repo next to index.html.
-     ─────────────────────────────────────────────────────── -->
-
-<div id="gun-wrap">
-  <img id="gun-img" src="gun.png" alt="" draggable="false"
-       onerror="handleGunLoadError()">
+<div id="pin-wrap">
+  <img id="pin-img" alt="" draggable="false"
+       onerror="useFallbackPin()">
 </div>
 
 <div id="start-screen">
-  <div id="start-icon">🎯</div>
-  <div id="start-label">Tap to Start</div>
-  <div id="start-sub">camera shooter</div>
+  <div id="start-icon">🥖</div>
+  <div id="start-label">Tap to Throw</div>
+  <div id="start-sub">rolling pin throw</div>
   <div id="start-error"></div>
 </div>
 
 <script>
 /* ===================================================================
-   ████  TUNING CONSTANTS — edit these to adjust everything  ████
+   ██████  TUNING CONSTANTS  ██████
    ===================================================================
-
-   All measurements are in either:
-     vw  = % of viewport width
-     vh  = % of viewport height
-     px  = pixels
-     deg = degrees
-
-   Tip: set SHOW_MUZZLE_DOT = true, then tap to see a red dot
-   exactly where the muzzle is. Adjust MUZZLE_X_PCT / MUZZLE_Y_PCT
-   until the dot lines up with the barrel tip in your sprite.
+   Tweak these to adjust the feel of the throw on your device.
 =================================================================== */
 
-// ── Gun image source ─────────────────────────────────────────────
-// Change this string to use a different file or absolute URL.
-// Must be a transparent PNG or WebP with the weapon already
-// showing a first-person held perspective (hand included).
-const GUN_SRC = 'gun.png';
+// ── Pin image source ──────────────────────────────────────────────
+// Place a transparent PNG/WebP named rolling-pin.png in your repo
+// root for a photographic look. If the file is missing the built-in
+// SVG fallback is used automatically.
+const PIN_SRC = 'rolling-pin.png';
 
-// ── Gun wrapper size ─────────────────────────────────────────────
-const GUN_WIDTH_VW   = 96;    // width of gun wrapper as % of viewport width
+// ── Rest position (where pin sits before throw) ───────────────────
+// As % of viewport. Pin is right-anchored then offset by these.
+const PIN_REST_RIGHT_VW  = -8;   // vw from right edge (neg = off-screen)
+const PIN_REST_BOTTOM_VH = -6;   // vh from bottom edge (neg = off-screen)
 
-// ── Gun position (right-bottom anchor) ───────────────────────────
-// Positive values move gun further INTO the screen.
-// Negative values move it further off-screen edge.
-const GUN_RIGHT_VW   = -18;   // horizontal offset from right edge (vw)
-const GUN_BOTTOM_VH  = -14;   // vertical offset from bottom edge (vh)
+// ── Pin size ──────────────────────────────────────────────────────
+const PIN_WIDTH_VW = 78;   // width as % of viewport width
 
-// ── Gun rotation ─────────────────────────────────────────────────
-// Negative = barrel tilts toward upper-left (standard FPS look)
-const GUN_ROT_DEG    = -18;
+// ── Pin rotation at rest (tipped so handle is lower-right) ────────
+const PIN_REST_ROT_DEG = -34;  // degrees (neg = barrel toward upper-left)
 
-// ── Transform-origin (pivot point for recoil rotation) ───────────
-// As % of the gun wrapper. Set near the grip / rear of gun.
-const PIVOT_X_PCT    = 78;
-const PIVOT_Y_PCT    = 82;
+// ── Throw trajectory ──────────────────────────────────────────────
+// Angle (degrees) the pin travels during the throw.
+// 0 = straight right, -90 = straight up, -50 = upper-right typical.
+const THROW_ANGLE_DEG  = -62;
 
-// ── Muzzle tip position ───────────────────────────────────────────
-// As % of the gun wrapper bounding box BEFORE rotation.
-// 0,0 = top-left corner. Tune with SHOW_MUZZLE_DOT = true.
-const MUZZLE_X_PCT   = 8.5;
-const MUZZLE_Y_PCT   = 28.0;
+// Distance the pin travels across the screen (in viewport widths).
+// 1.6 = pin fully exits the screen.
+const THROW_DISTANCE_VW = 1.65;
 
-// ── Recoil ────────────────────────────────────────────────────────
-const RECOIL_X_PX    = 16;    // px kick right
-const RECOIL_Y_PX    = -22;   // px kick up (negative = up)
-const RECOIL_ROT_DEG = 6;     // extra clockwise tilt at peak
-const RECOIL_IN_MS   = 48;    // ms to reach peak recoil
-const RECOIL_OUT_MS  = 185;   // ms to return to rest
+// Throw duration in milliseconds.
+const THROW_DURATION_MS = 420;
 
-// ── Muzzle flash ─────────────────────────────────────────────────
-const FLASH_SCALE    = 1.9;   // max scale of flash burst
-const FLASH_IN_MS    = 18;    // rise time (ms)
-const FLASH_OUT_MS   = 115;   // decay time (ms)
+// ── Spin ─────────────────────────────────────────────────────────
+// Total degrees of rotation during a single throw.
+// 720 = two full rotations, 1080 = three.
+const SPIN_TOTAL_DEG = 900;
 
-// ── Bullet ───────────────────────────────────────────────────────
-const BULLET_SIZE_PX = 11;    // diameter in px
-const BULLET_SPEED   = 1600;  // px per second
-// Direction the bullet travels. Should match your gun's barrel angle.
-// -90 = straight up, -120 = upper-left (typical FPS)
-const BULLET_ANGLE_DEG = -115;
-const BULLET_LIFE_MS = 460;   // ms before bullet is removed
+// ── Wind-up before launch ─────────────────────────────────────────
+// Brief backward motion before the throw — makes it feel physical.
+const WINDUP_DIST_PX   = 28;   // pixels pulled back
+const WINDUP_ROT_DEG   = 14;   // extra rotation pulled back
+const WINDUP_MS        = 95;   // wind-up duration
 
-// ── Fire rate ─────────────────────────────────────────────────────
-const FIRE_RATE_MS   = 120;   // minimum ms between shots (8 shots/sec)
-const AUTO_FIRE_ON_HOLD = true; // set false to require individual taps
+// ── Scale during flight (perspective shrink) ──────────────────────
+// Pin starts at 1.0 and scales to this value as it travels away.
+const THROW_END_SCALE  = 0.28;
 
-// ── Debug ────────────────────────────────────────────────────────
-// Set to true to see a red dot at the computed muzzle position.
-// Fine-tune MUZZLE_X_PCT / MUZZLE_Y_PCT until it lines up,
-// then set back to false.
-const SHOW_MUZZLE_DOT = false;
+// ── Motion blur ───────────────────────────────────────────────────
+// Whether to apply a motion blur filter during peak throw speed.
+const MOTION_BLUR_ON   = true;
+const MOTION_BLUR_PX   = 5;    // max blur in pixels
+
+// ── Reset delay ───────────────────────────────────────────────────
+// ms after throw ends before pin reappears at rest position.
+const RESET_DELAY_MS   = 320;
+
+// ── Fire rate throttle ────────────────────────────────────────────
+// Minimum ms between throws (prevents accidental double-tap throws).
+const MIN_THROW_INTERVAL_MS = 600;
 
 /* ===================================================================
-   RUNTIME — do not need to edit below this line
+   BUILT-IN SVG ROLLING PIN
+   ───────────────────────────────────────────────────────────────────
+   This SVG is a realistic wooden rolling pin rendered from a 3/4
+   perspective angle so it reads as 3D. It features:
+     • Warm maple-wood grain gradients with individual grain lines
+     • Cylindrical barrel with proper highlight + shadow rolls
+     • Brushed stainless steel end caps with radial reflections
+     • Cast shadow beneath for grounding
+   Much more convincing than flat canvas shapes.
+   Override by placing rolling-pin.png in your repo.
 =================================================================== */
+const FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 640 200" width="640" height="200">
+<defs>
+  <!-- Wood grain base — warm maple -->
+  <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="#f0c97a"/>
+    <stop offset="8%"   stop-color="#e8b85c"/>
+    <stop offset="22%"  stop-color="#dda03c"/>
+    <stop offset="38%"  stop-color="#c8882a"/>
+    <stop offset="52%"  stop-color="#b87020"/>
+    <stop offset="65%"  stop-color="#c88228"/>
+    <stop offset="78%"  stop-color="#dda030"/>
+    <stop offset="90%"  stop-color="#e8b84a"/>
+    <stop offset="100%" stop-color="#eed068"/>
+  </linearGradient>
+  <!-- Highlight roll across top of barrel -->
+  <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="rgba(255,255,220,0.55)"/>
+    <stop offset="18%"  stop-color="rgba(255,240,180,0.22)"/>
+    <stop offset="55%"  stop-color="rgba(0,0,0,0)"/>
+    <stop offset="82%"  stop-color="rgba(0,0,0,0.18)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.34)"/>
+  </linearGradient>
+  <!-- End-cap steel gradient -->
+  <radialGradient id="cap" cx="40%" cy="35%" r="68%">
+    <stop offset="0%"   stop-color="#e8e8e8"/>
+    <stop offset="28%"  stop-color="#c0c0c0"/>
+    <stop offset="55%"  stop-color="#888"/>
+    <stop offset="78%"  stop-color="#aaa"/>
+    <stop offset="100%" stop-color="#666"/>
+  </radialGradient>
+  <!-- End-cap for right side (slightly darker, facing away) -->
+  <radialGradient id="cap2" cx="60%" cy="40%" r="65%">
+    <stop offset="0%"   stop-color="#d0d0d0"/>
+    <stop offset="35%"  stop-color="#909090"/>
+    <stop offset="65%"  stop-color="#606060"/>
+    <stop offset="100%" stop-color="#484848"/>
+  </radialGradient>
+  <!-- Handle gradient -->
+  <linearGradient id="hnd" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="#f2cc7e"/>
+    <stop offset="12%"  stop-color="#e0a840"/>
+    <stop offset="42%"  stop-color="#b87020"/>
+    <stop offset="68%"  stop-color="#c88228"/>
+    <stop offset="100%" stop-color="#e8b84a"/>
+  </linearGradient>
+  <!-- Handle highlight -->
+  <linearGradient id="hhl" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="rgba(255,250,200,0.5)"/>
+    <stop offset="30%"  stop-color="rgba(255,240,180,0.15)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.2)"/>
+  </linearGradient>
+  <!-- Collar ring gradient -->
+  <linearGradient id="col" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="#d8d8d8"/>
+    <stop offset="30%"  stop-color="#a0a0a0"/>
+    <stop offset="60%"  stop-color="#686868"/>
+    <stop offset="100%" stop-color="#888"/>
+  </linearGradient>
+  <!-- Drop shadow filter -->
+  <filter id="ds" x="-8%" y="-30%" width="116%" height="200%">
+    <feDropShadow dx="0" dy="8" stdDeviation="7"
+      flood-color="rgba(0,0,0,0.55)"/>
+  </filter>
+  <!-- Subtle inner glow on barrel edge -->
+  <filter id="glow">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="b"/>
+    <feComposite in="SourceGraphic" in2="b" operator="over"/>
+  </filter>
+</defs>
 
+<!-- ── CAST SHADOW (underneath, blurred) ── -->
+<ellipse cx="320" cy="194" rx="290" ry="10"
+  fill="rgba(0,0,0,0.28)" filter="url(#ds)"/>
+
+<!-- ── LEFT HANDLE ── -->
+<rect x="4" y="72" width="92" height="56" rx="10"
+  fill="url(#hnd)" filter="url(#ds)"/>
+<rect x="4" y="72" width="92" height="56" rx="10"
+  fill="url(#hhl)"/>
+<!-- handle grain lines -->
+<line x1="18" y1="72" x2="18" y2="128" stroke="rgba(0,0,0,0.12)" stroke-width="1.2"/>
+<line x1="34" y1="72" x2="34" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
+<line x1="52" y1="72" x2="52" y2="128" stroke="rgba(0,0,0,0.10)" stroke-width="1.0"/>
+<line x1="70" y1="72" x2="70" y2="128" stroke="rgba(0,0,0,0.08)" stroke-width="0.8"/>
+<line x1="86" y1="72" x2="86" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
+<!-- handle end knob -->
+<ellipse cx="8" cy="100" rx="9" ry="26"
+  fill="url(#cap)" filter="url(#ds)"/>
+
+<!-- ── LEFT COLLAR ── -->
+<rect x="94" y="62" width="30" height="76" rx="5"
+  fill="url(#col)" filter="url(#ds)"/>
+<!-- collar highlight ring -->
+<rect x="94" y="62" width="10" height="76" rx="3"
+  fill="rgba(255,255,255,0.18)"/>
+<!-- collar screw detail -->
+<circle cx="109" cy="88"  r="3.5" fill="#555"/>
+<circle cx="109" cy="112" r="3.5" fill="#555"/>
+<circle cx="109" cy="88"  r="1.5" fill="#888"/>
+<circle cx="109" cy="112" r="1.5" fill="#888"/>
+
+<!-- ── MAIN BARREL ── -->
+<rect x="122" y="44" width="396" height="112" rx="18"
+  fill="url(#wg)" filter="url(#ds)"/>
+<!-- Barrel cylinder shading overlay -->
+<rect x="122" y="44" width="396" height="112" rx="18"
+  fill="url(#hl)"/>
+<!-- wood grain lines on barrel -->
+<line x1="148" y1="44" x2="144" y2="156" stroke="rgba(0,0,0,0.07)" stroke-width="1.4"/>
+<line x1="178" y1="44" x2="174" y2="156" stroke="rgba(100,50,0,0.08)" stroke-width="1.0"/>
+<line x1="210" y1="44" x2="206" y2="156" stroke="rgba(0,0,0,0.06)" stroke-width="1.2"/>
+<line x1="246" y1="44" x2="242" y2="156" stroke="rgba(100,50,0,0.07)" stroke-width="0.9"/>
+<line x1="284" y1="44" x2="280" y2="156" stroke="rgba(0,0,0,0.065)" stroke-width="1.1"/>
+<line x1="320" y1="44" x2="316" y2="156" stroke="rgba(100,50,0,0.06)" stroke-width="1.0"/>
+<line x1="358" y1="44" x2="354" y2="156" stroke="rgba(0,0,0,0.06)" stroke-width="1.2"/>
+<line x1="394" y1="44" x2="390" y2="156" stroke="rgba(100,50,0,0.07)" stroke-width="0.9"/>
+<line x1="430" y1="44" x2="426" y2="156" stroke="rgba(0,0,0,0.065)" stroke-width="1.0"/>
+<line x1="466" y1="44" x2="462" y2="156" stroke="rgba(100,50,0,0.06)" stroke-width="1.1"/>
+<line x1="498" y1="44" x2="494" y2="156" stroke="rgba(0,0,0,0.07)" stroke-width="0.9"/>
+<!-- subtle horizontal grain wave -->
+<path d="M122,82 Q200,78 280,84 Q360,90 440,82 Q500,76 518,80"
+  stroke="rgba(0,0,0,0.04)" stroke-width="1.5" fill="none"/>
+<path d="M122,118 Q200,114 280,120 Q360,126 440,118 Q500,112 518,116"
+  stroke="rgba(0,0,0,0.04)" stroke-width="1.5" fill="none"/>
+<!-- barrel top specular streak -->
+<rect x="130" y="48" width="380" height="18" rx="9"
+  fill="rgba(255,255,230,0.28)"/>
+<rect x="150" y="50" width="340" height="6" rx="3"
+  fill="rgba(255,255,255,0.18)"/>
+
+<!-- ── RIGHT COLLAR ── -->
+<rect x="516" y="62" width="30" height="76" rx="5"
+  fill="url(#col)" filter="url(#ds)"/>
+<rect x="536" y="62" width="10" height="76" rx="3"
+  fill="rgba(0,0,0,0.14)"/>
+<circle cx="531" cy="88"  r="3.5" fill="#555"/>
+<circle cx="531" cy="112" r="3.5" fill="#555"/>
+<circle cx="531" cy="88"  r="1.5" fill="#888"/>
+<circle cx="531" cy="112" r="1.5" fill="#888"/>
+
+<!-- ── RIGHT HANDLE ── -->
+<rect x="544" y="72" width="92" height="56" rx="10"
+  fill="url(#hnd)" filter="url(#ds)"/>
+<rect x="544" y="72" width="92" height="56" rx="10"
+  fill="url(#hhl)"/>
+<line x1="558" y1="72" x2="558" y2="128" stroke="rgba(0,0,0,0.12)" stroke-width="1.2"/>
+<line x1="574" y1="72" x2="574" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
+<line x1="592" y1="72" x2="592" y2="128" stroke="rgba(0,0,0,0.10)" stroke-width="1.0"/>
+<line x1="610" y1="72" x2="610" y2="128" stroke="rgba(0,0,0,0.08)" stroke-width="0.8"/>
+<line x1="626" y1="72" x2="626" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
+<ellipse cx="632" cy="100" rx="9" ry="26"
+  fill="url(#cap2)" filter="url(#ds)"/>
+</svg>`;
+
+/* ===================================================================
+   RUNTIME STATE
+=================================================================== */
 const $cam    = document.getElementById('camera');
 const $start  = document.getElementById('start-screen');
-const $err    = document.getElementById('start-error');
-const $wrap   = document.getElementById('gun-wrap');
-const $img    = document.getElementById('gun-img');
-const $flash  = document.getElementById('muzzle-flash');
-const $glow   = document.getElementById('muzzle-glow');
-const $dot    = document.getElementById('muzzle-dot');
-const $sf     = document.getElementById('screen-flash');
+const $errEl  = document.getElementById('start-error');
+const $wrap   = document.getElementById('pin-wrap');
+const $img    = document.getElementById('pin-img');
+const $shadow = document.getElementById('hand-shadow');
 
-let cameraReady = false;
-let lastFireTime = 0;
-let autoFireHandle = null;
-let muzzleX = 0, muzzleY = 0;
+let cameraReady  = false;
+let throwing     = false;
+let lastThrow    = 0;
 
-// ── Gun missing fallback ─────────────────────────────────────────
-function handleGunLoadError() {
-  // If gun.png is missing, show instructions overlay on the gun wrap
-  $wrap.innerHTML = `
-    <div style="
-      font-family:'Courier New',monospace;
-      font-size:clamp(10px,2.5vw,13px);
-      color:rgba(255,200,80,0.9);
-      background:rgba(0,0,0,0.75);
-      border:1px solid rgba(255,200,80,0.4);
-      border-radius:10px;
-      padding:18px 22px;
-      max-width:300px;
-      line-height:1.7;
-      text-align:left;
-    ">
-      <b style="font-size:1.2em">⚠️ gun.png missing</b><br><br>
-      Add a transparent FPS weapon PNG to your repo root named
-      <b>gun.png</b>.<br><br>
-      Good free sources:<br>
-      • pngegg.com → "fps gun transparent"<br>
-      • pngwing.com → "gun first person"<br>
-      • itch.io free asset packs<br><br>
-      Then commit it alongside index.html.
-    </div>
-  `;
-  $wrap.style.cssText = `
-    position:fixed; z-index:20;
-    bottom: calc(env(safe-area-inset-bottom,0px) + 20px);
-    right: 16px;
-    pointer-events:none;
-  `;
+// Rest transform (set by positionPin, reused on reset)
+let restLeft = 0, restTop = 0, restW = 0, restH = 0;
+
+/* ===================================================================
+   FALLBACK: use inline SVG if rolling-pin.png is missing
+=================================================================== */
+function useFallbackPin() {
+  const blob = new Blob([FALLBACK_SVG], { type: 'image/svg+xml' });
+  const url  = URL.createObjectURL(blob);
+  $img.src   = url;
 }
 
-// ── Position gun wrapper ─────────────────────────────────────────
-function positionGun() {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+// Kick off with the external image; onerror will swap to SVG
+$img.src = PIN_SRC;
+$img.addEventListener('load', positionPin);
 
-  const safeBottom = getSafeAreaBottom();
-
-  const w = vw * (GUN_WIDTH_VW / 100);
-  // Maintain natural aspect ratio of the image once loaded
-  const imgNaturalRatio = ($img.naturalWidth && $img.naturalHeight)
-    ? $img.naturalHeight / $img.naturalWidth
-    : 0.65; // fallback ratio
-  const h = w * imgNaturalRatio;
-
-  const rightOffset  = vw * (GUN_RIGHT_VW  / 100);
-  const bottomOffset = vh * (GUN_BOTTOM_VH / 100);
-
-  const left = vw - w + rightOffset;
-  const top  = vh - h - bottomOffset - safeBottom;
-
-  $wrap.style.cssText = `
-    position: fixed;
-    left: ${left}px;
-    top: ${top}px;
-    width: ${w}px;
-    height: ${h}px;
-    z-index: 20;
-    pointer-events: none;
-    will-change: transform;
-    transform-origin: ${PIVOT_X_PCT}% ${PIVOT_Y_PCT}%;
-    transform: rotate(${GUN_ROT_DEG}deg);
-  `;
-
-  // Recompute muzzle after layout settles
-  requestAnimationFrame(calcMuzzle);
-}
-
-// Read iOS safe area inset via probe element
+/* ===================================================================
+   PIN LAYOUT — called on load, resize, orientation change
+=================================================================== */
 function getSafeAreaBottom() {
-  const el = document.createElement('div');
-  el.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden;';
-  document.body.appendChild(el);
-  const h = el.getBoundingClientRect().height;
-  document.body.removeChild(el);
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden;';
+  document.body.appendChild(probe);
+  const h = probe.getBoundingClientRect().height;
+  probe.remove();
   return h;
 }
 
-// ── Muzzle world-space position ──────────────────────────────────
-// We calculate by taking the muzzle's local offset from the
-// transform-origin, rotating it by GUN_ROT_DEG, then adding
-// the origin's world position.
-function calcMuzzle() {
-  const r  = $wrap.getBoundingClientRect();
-  const w  = r.width, h = r.height;
+function positionPin() {
+  const vw  = window.innerWidth;
+  const vh  = window.innerHeight;
+  const sab = getSafeAreaBottom();
 
-  // Local coords of muzzle within un-rotated element
-  const lx = (MUZZLE_X_PCT / 100) * w;
-  const ly = (MUZZLE_Y_PCT / 100) * h;
+  // Natural aspect ratio of whichever image loaded
+  const ratio = ($img.naturalWidth && $img.naturalHeight)
+    ? $img.naturalHeight / $img.naturalWidth
+    : 200 / 640; // SVG viewBox aspect
 
-  // Local coords of pivot / transform-origin
-  const px = (PIVOT_X_PCT / 100) * w;
-  const py = (PIVOT_Y_PCT / 100) * h;
+  const w = vw * (PIN_WIDTH_VW / 100);
+  const h = w * ratio;
 
-  // Vector from pivot to muzzle
-  const dx = lx - px, dy = ly - py;
+  const rightOff  = vw * (PIN_REST_RIGHT_VW  / 100);
+  const bottomOff = vh * (PIN_REST_BOTTOM_VH / 100);
 
-  // Rotate vector by GUN_ROT_DEG
-  const rad = GUN_ROT_DEG * Math.PI / 180;
-  const rx  = dx * Math.cos(rad) - dy * Math.sin(rad);
-  const ry  = dx * Math.sin(rad) + dy * Math.cos(rad);
+  const left = vw - w + rightOff;
+  const top  = vh - h - bottomOff - sab;
 
-  // World position of pivot = bounding rect top-left + pivot offset
-  // (getBoundingClientRect already accounts for rotation)
-  // We need to un-rotate the bounding rect to find the element's
-  // true (un-transformed) top-left. Easier: just offset from r.left/r.top
-  // using the known formula: pivot world = r.left + px_rotated
-  // Simpler approximation that's accurate for our use case:
-  const pivotWorldX = r.left + r.width  * (PIVOT_X_PCT / 100);
-  const pivotWorldY = r.top  + r.height * (PIVOT_Y_PCT / 100);
+  restLeft = left;
+  restTop  = top;
+  restW    = w;
+  restH    = h;
 
-  muzzleX = pivotWorldX + rx;
-  muzzleY = pivotWorldY + ry;
+  applyRestPose(false);
 
-  // Apply to flash elements
-  $flash.style.left = $glow.style.left = muzzleX + 'px';
-  $flash.style.top  = $glow.style.top  = muzzleY + 'px';
-
-  if (SHOW_MUZZLE_DOT) {
-    $dot.style.display = 'block';
-    $dot.style.left = muzzleX + 'px';
-    $dot.style.top  = muzzleY + 'px';
-  } else {
-    $dot.style.display = 'none';
-  }
+  // Size the hand shadow accordingly
+  $shadow.style.cssText = `
+    position: fixed; z-index: 19; pointer-events: none;
+    width:  ${w * 0.38}px;
+    height: ${h * 0.55}px;
+    left:   ${left + w * 0.58}px;
+    top:    ${top  + h * 0.42}px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0.45) 0%, transparent 70%);
+    transform: rotate(${PIN_REST_ROT_DEG}deg);
+    transition: opacity 0.25s ease;
+    opacity: 1;
+  `;
 }
 
-// Reposition on image load (we now know the natural aspect ratio)
-$img.addEventListener('load', () => {
-  positionGun();
-});
+function applyRestPose(animate) {
+  $wrap.style.cssText = `
+    position: fixed;
+    left:   ${restLeft}px;
+    top:    ${restTop}px;
+    width:  ${restW}px;
+    height: ${restH}px;
+    z-index: 20;
+    pointer-events: none;
+    will-change: transform, opacity;
+    transform-origin: center center;
+    transform: rotate(${PIN_REST_ROT_DEG}deg) scale(1);
+    opacity: 1;
+    ${animate ? 'transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), opacity 0.18s ease;' : ''}
+  `;
+}
 
-window.addEventListener('resize', positionGun);
-window.addEventListener('orientationchange', () => setTimeout(positionGun, 320));
+window.addEventListener('resize', positionPin);
+window.addEventListener('orientationchange', () => setTimeout(positionPin, 340));
 
-// Initial layout pass (image may already be cached)
-positionGun();
+/* ===================================================================
+   THROW ANIMATION
+   ─────────────────────────────────────────────────────────────────
+   Three phases:
+     1. Wind-up  — pin pulls back slightly (WINDUP_MS)
+     2. Launch   — pin flies across screen with spin + shrink
+     3. Reset    — pin fades back to rest position
+=================================================================== */
+function throwPin(tapX, tapY) {
+  const now = performance.now();
+  if (throwing || now - lastThrow < MIN_THROW_INTERVAL_MS) return;
+  throwing  = true;
+  lastThrow = now;
 
-// ── CAMERA ───────────────────────────────────────────────────────
+  if (navigator.vibrate) navigator.vibrate(22);
+  spawnTapRipple(tapX, tapY);
+
+  const vw       = window.innerWidth;
+  const angleRad = THROW_ANGLE_DEG * Math.PI / 180;
+  const totalDist = vw * THROW_DISTANCE_VW;
+  const endX     = Math.cos(angleRad) * totalDist;
+  const endY     = Math.sin(angleRad) * totalDist;
+
+  // ── Phase 1: Wind-up ──
+  $shadow.style.opacity = '0';
+
+  $wrap.style.transition =
+    `transform ${WINDUP_MS}ms cubic-bezier(0.4, 0, 0.6, 1)`;
+  $wrap.style.transform  =
+    `rotate(${PIN_REST_ROT_DEG - WINDUP_ROT_DEG}deg) translate(${-WINDUP_DIST_PX}px, ${WINDUP_DIST_PX * 0.5}px) scale(1.04)`;
+
+  // ── Phase 2: Launch ──
+  setTimeout(() => {
+    const totalRot   = PIN_REST_ROT_DEG + SPIN_TOTAL_DEG;
+    const easing     = 'cubic-bezier(0.22, 0.8, 0.52, 0.98)';
+    const blurFilter = MOTION_BLUR_ON
+      ? `blur(${MOTION_BLUR_PX}px)`
+      : 'none';
+
+    $wrap.style.transition =
+      `transform ${THROW_DURATION_MS}ms ${easing},
+       opacity   ${THROW_DURATION_MS * 0.85}ms ease-in ${THROW_DURATION_MS * 0.15}ms,
+       filter    ${THROW_DURATION_MS}ms ${easing}`;
+
+    $wrap.style.transform =
+      `translate(${endX}px, ${endY}px) rotate(${totalRot}deg) scale(${THROW_END_SCALE})`;
+    $wrap.style.opacity = '0';
+    $wrap.style.filter  = blurFilter;
+
+    // ── Phase 3: Reset ──
+    setTimeout(() => {
+      // Instantly snap back to rest (no transition) then fade in
+      $wrap.style.transition = 'none';
+      $wrap.style.filter     = 'none';
+      applyRestPose(false);
+
+      // Force reflow then animate in
+      void $wrap.offsetWidth;
+
+      $wrap.style.transition =
+        `transform 0.28s cubic-bezier(0.34,1.4,0.64,1),
+         opacity   0.22s ease-out`;
+      $wrap.style.opacity = '1';
+
+      // Re-show hand shadow
+      $shadow.style.opacity = '1';
+
+      setTimeout(() => {
+        throwing = false;
+      }, 300);
+
+    }, THROW_DURATION_MS + RESET_DELAY_MS);
+
+  }, WINDUP_MS);
+}
+
+/* ===================================================================
+   TAP RIPPLE EFFECT
+=================================================================== */
+function spawnTapRipple(x, y) {
+  const el = document.createElement('div');
+  el.className = 'tap-ripple';
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 500);
+}
+
+/* ===================================================================
+   CAMERA
+=================================================================== */
 async function startCamera() {
   if (cameraReady) return;
 
-  const attemptStart = async (constraints) => {
+  const tryStart = async (constraints) => {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     $cam.srcObject = stream;
     await $cam.play();
     cameraReady = true;
     $start.classList.add('hidden');
-    setTimeout(() => { $start.style.display = 'none'; }, 600);
-    positionGun(); // recalculate after camera starts
+    setTimeout(() => { $start.style.display = 'none'; }, 650);
+    positionPin();
   };
 
   try {
-    await attemptStart({
+    await tryStart({
       video: {
         facingMode: { exact: 'environment' },
         width:  { ideal: 1920 },
@@ -487,164 +615,34 @@ async function startCamera() {
     });
   } catch {
     try {
-      await attemptStart({
-        video: { facingMode: 'environment' },
-        audio: false
-      });
+      await tryStart({ video: { facingMode: 'environment' }, audio: false });
     } catch (e) {
       document.getElementById('start-label').textContent = 'Camera unavailable';
-      $err.style.display = 'block';
-      $err.textContent = e.message;
+      $errEl.style.display = 'block';
+      $errEl.textContent   = e.message;
     }
   }
 }
 
-// ── FIRE ─────────────────────────────────────────────────────────
-function fire() {
-  const now = performance.now();
-  if (now - lastFireTime < FIRE_RATE_MS) return;
-  lastFireTime = now;
-
-  calcMuzzle(); // always use freshest muzzle position
-  doRecoil();
-  doMuzzleFlash();
-  spawnBullet();
-  doScreenFlash();
-  if (navigator.vibrate) navigator.vibrate(15);
-}
-
-// ── Recoil ───────────────────────────────────────────────────────
-function doRecoil() {
-  const kickTransform = `
-    rotate(${GUN_ROT_DEG + RECOIL_ROT_DEG}deg)
-    translate(${RECOIL_X_PX}px, ${RECOIL_Y_PX}px)
-  `;
-  $wrap.style.transition = `transform ${RECOIL_IN_MS}ms cubic-bezier(0.1, 0.8, 0.4, 1)`;
-  $wrap.style.transform  = kickTransform;
-
-  setTimeout(() => {
-    $wrap.style.transition = `transform ${RECOIL_OUT_MS}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
-    $wrap.style.transform  = `rotate(${GUN_ROT_DEG}deg)`;
-    setTimeout(calcMuzzle, RECOIL_OUT_MS + 20);
-  }, RECOIL_IN_MS);
-}
-
-// ── Muzzle flash ─────────────────────────────────────────────────
-function doMuzzleFlash() {
-  const rot = Math.random() * 80 - 40; // random spin each shot
-
-  const reset = (el) => {
-    el.style.transition = 'none';
-    el.style.opacity    = '0';
-    el.style.transform  = `translate(-50%, -50%) scale(0.12) rotate(${rot}deg)`;
-  };
-  reset($flash); reset($glow);
-  void $flash.offsetWidth; // force reflow
-
-  const show = (el, scale) => {
-    el.style.transition = `opacity ${FLASH_IN_MS}ms ease-out, transform ${FLASH_IN_MS}ms ease-out`;
-    el.style.opacity    = '1';
-    el.style.transform  = `translate(-50%, -50%) scale(${scale}) rotate(${rot}deg)`;
-  };
-  show($flash, FLASH_SCALE);
-  show($glow,  FLASH_SCALE * 1.5);
-
-  setTimeout(() => {
-    const hide = (el) => {
-      el.style.transition = `opacity ${FLASH_OUT_MS}ms ease-in, transform ${FLASH_OUT_MS}ms ease-in`;
-      el.style.opacity    = '0';
-      el.style.transform  = `translate(-50%, -50%) scale(0.08) rotate(${rot}deg)`;
-    };
-    hide($flash); hide($glow);
-  }, FLASH_IN_MS);
-}
-
-// ── Screen flash ─────────────────────────────────────────────────
-function doScreenFlash() {
-  $sf.style.transition = 'none';
-  $sf.style.opacity    = '1';
-  void $sf.offsetWidth;
-  $sf.style.transition = 'opacity 82ms ease-out';
-  $sf.style.opacity    = '0';
-}
-
-// ── Bullet ───────────────────────────────────────────────────────
-function spawnBullet() {
-  const el = document.createElement('div');
-  el.className = 'bullet';
-  el.style.cssText = `
-    width:  ${BULLET_SIZE_PX}px;
-    height: ${BULLET_SIZE_PX}px;
-    left: ${muzzleX}px;
-    top:  ${muzzleY}px;
-    transform: translate(-50%, -50%);
-    opacity: 1;
-  `;
-  document.body.appendChild(el);
-
-  const angleRad = BULLET_ANGLE_DEG * Math.PI / 180;
-  const dirX     = Math.cos(angleRad);
-  const dirY     = Math.sin(angleRad);
-
-  // Capture muzzle at time of spawn (stays fixed even if gun recoils)
-  const startX = muzzleX;
-  const startY = muzzleY;
-  let   t0     = null;
-
-  const step = (ts) => {
-    if (!t0) t0 = ts;
-    const elapsed = ts - t0;
-
-    if (elapsed >= BULLET_LIFE_MS) {
-      el.remove();
-      return;
-    }
-
-    const progress = elapsed / BULLET_LIFE_MS;
-    const distance = (BULLET_SPEED * elapsed) / 1000;
-    const fade     = progress > 0.5 ? 1 - (progress - 0.5) / 0.5 : 1;
-    const scale    = 1 - progress * 0.6;
-
-    el.style.left      = (startX + dirX * distance) + 'px';
-    el.style.top       = (startY + dirY * distance) + 'px';
-    el.style.opacity   = fade;
-    el.style.transform = `translate(-50%, -50%) scale(${scale})`;
-
-    requestAnimationFrame(step);
-  };
-
-  requestAnimationFrame(step);
-}
-
-// ── INPUT HANDLING ────────────────────────────────────────────────
+/* ===================================================================
+   INPUT
+=================================================================== */
 document.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-
   if (!cameraReady) {
     startCamera();
     return;
   }
-
-  fire();
-
-  if (AUTO_FIRE_ON_HOLD) {
-    clearInterval(autoFireHandle);
-    autoFireHandle = setInterval(fire, FIRE_RATE_MS);
-  }
+  throwPin(e.clientX, e.clientY);
 }, { passive: false });
 
-document.addEventListener('pointerup', () => {
-  clearInterval(autoFireHandle);
-  autoFireHandle = null;
-});
-
-document.addEventListener('pointercancel', () => {
-  clearInterval(autoFireHandle);
-  autoFireHandle = null;
-});
-
-// Prevent iOS context menu on long press
 document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/* ===================================================================
+   INITIAL LAYOUT
+   (image may already be in browser cache)
+=================================================================== */
+positionPin();
 </script>
 
 </body>
