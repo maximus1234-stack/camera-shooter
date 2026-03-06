@@ -1,317 +1,763 @@
 <!DOCTYPE html>
-<html>
+
+<html lang="en">
 <head>
-
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Camera Shooter</title>
 <style>
+  /* ============================================================
+     DESIGN TOKENS — edit these to restyle everything
+     ============================================================ */
+  :root {
+    --flash-color: rgba(255, 220, 120, 0.18);
+    --muzzle-core: #fff8e0;
+    --muzzle-mid:  #ffcc44;
+    --muzzle-outer:#ff8800;
+    --bullet-color:#ffee88;
+    --bullet-glow: #ff9900;
+  }
 
-body{
-margin:0;
-overflow:hidden;
-background:black;
+/* ============================================================
+RESET & BASE
+============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+width: 100%; height: 100%;
+overflow: hidden;
+background: #000;
+touch-action: none; /* prevent scroll/zoom on tap */
+user-select: none;
+-webkit-user-select: none;
 }
 
-/* CAMERA */
-
-video{
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-object-fit:cover;
-z-index:1;
+/* ============================================================
+CAMERA VIDEO
+============================================================ */
+#camera {
+position: fixed;
+inset: 0;
+width: 100%; height: 100%;
+object-fit: cover;
+z-index: 0;
+/* Slight vignette for FPS atmosphere */
+filter: contrast(1.05) saturate(1.08);
 }
 
-/* GUN POSITION */
-
-#gunWrap{
-position:fixed;
-inset:0;
-pointer-events:none;
-z-index:10;
+/* Vignette overlay */
+#vignette {
+position: fixed;
+inset: 0;
+z-index: 1;
+pointer-events: none;
+background: radial-gradient(ellipse at center,
+transparent 50%,
+rgba(0,0,0,0.55) 100%
+);
 }
 
-#gun{
-
-position:absolute;
-
-/* first-person position */
-right:-8vw;
-bottom:calc(16vh + env(safe-area-inset-bottom));
-width:140vw;
-max-width:950px;
-transform:rotate(-12deg);
-
-/* size tuned for Pro Max */
-width:155vw;
-max-width:980px;
-
-/* aiming angle */
-transform-origin:72% 78%;
-transform:rotate(-10deg);
-
-filter:drop-shadow(0 14px 20px rgba(0,0,0,.45));
-
-will-change:transform;
-
+/* ============================================================
+START SCREEN
+============================================================ */
+#start-screen {
+position: fixed;
+inset: 0;
+z-index: 50;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+background: #000;
+gap: 24px;
+transition: opacity 0.5s ease;
+}
+#start-screen.hidden {
+opacity: 0;
+pointer-events: none;
+}
+#start-icon {
+font-size: 64px;
+animation: pulse-icon 2s ease-in-out infinite;
+}
+@keyframes pulse-icon {
+0%,100% { transform: scale(1);   opacity: 1;   }
+50%      { transform: scale(1.1); opacity: 0.7; }
+}
+#start-label {
+font-family: ‘Courier New’, monospace;
+font-size: clamp(16px, 4vw, 20px);
+letter-spacing: 0.25em;
+text-transform: uppercase;
+color: rgba(255,255,255,0.85);
+}
+#start-sublabel {
+font-family: ‘Courier New’, monospace;
+font-size: clamp(11px, 2.5vw, 13px);
+letter-spacing: 0.15em;
+color: rgba(255,255,255,0.35);
+text-transform: uppercase;
 }
 
-/* recoil */
-
-.recoil{
-animation:recoilKick 85ms ease-out;
+/* ============================================================
+SCREEN FLASH
+============================================================ */
+#screen-flash {
+position: fixed;
+inset: 0;
+z-index: 40;
+pointer-events: none;
+background: var(–flash-color);
+opacity: 0;
 }
 
-@keyframes recoilKick{
-
-0%{transform:rotate(-10deg) translate3d(0,0,0);}
-
-45%{transform:rotate(-7deg) translate3d(-14px,16px,0);}
-
-100%{transform:rotate(-10deg) translate3d(0,0,0);}
-
+/* ============================================================
+GUN CONTAINER
+──────────────────────────────────────────────────────────
+All position tuning is done via JS constants that write
+directly to these CSS properties.
+============================================================ */
+#gun-wrap {
+position: fixed;
+z-index: 20;
+/* transform-origin is set from JS (MUZZLE_X/Y percentages) */
+will-change: transform;
+pointer-events: none;
 }
 
-/* muzzle flash */
+#gun-img {
+display: block;
+width: 100%;
+height: 100%;
+object-fit: contain;
+}
 
-#muzzle{
-
-position:fixed;
-
-width:140px;
-height:140px;
-
-border-radius:50%;
-
-pointer-events:none;
-
-opacity:0;
-
+/* ============================================================
+MUZZLE FLASH
+============================================================ */
+#muzzle-flash {
+position: fixed;
+z-index: 25;
+pointer-events: none;
+opacity: 0;
+transform: translate(-50%, -50%) scale(0.3);
+/* layered radial = layered glow rings */
+width: 80px; height: 80px;
+border-radius: 50%;
 background:
-radial-gradient(circle,
-rgba(255,255,255,1) 0%,
-rgba(255,230,120,1) 25%,
-rgba(255,170,0,.6) 45%,
-rgba(255,90,0,.3) 65%,
-transparent 75%);
-
-mix-blend-mode:screen;
-
-z-index:20;
-
-transform:translate(-50%,-50%);
-
+radial-gradient(circle at center,
+var(–muzzle-core)  0%,
+var(–muzzle-mid)  30%,
+var(–muzzle-outer) 60%,
+transparent        80%
+);
+filter: blur(1.5px);
+mix-blend-mode: screen;
 }
 
-/* flash animation */
-
-.flash{
-animation:muzzleFlash 70ms ease-out;
+/* Muzzle debug dot */
+#muzzle-dot {
+position: fixed;
+z-index: 30;
+pointer-events: none;
+width: 10px; height: 10px;
+border-radius: 50%;
+background: #ff0044;
+transform: translate(-50%, -50%);
+box-shadow: 0 0 0 2px #fff;
+display: none;
 }
 
-@keyframes muzzleFlash{
-
-0%{opacity:0; transform:translate(-50%,-50%) scale(.7);}
-
-30%{opacity:1; transform:translate(-50%,-50%) scale(1);}
-
-100%{opacity:0; transform:translate(-50%,-50%) scale(1.2);}
-
+/* ============================================================
+BULLETS
+============================================================ */
+.bullet {
+position: fixed;
+z-index: 22;
+pointer-events: none;
+border-radius: 50%;
+background: radial-gradient(circle at center,
+#ffffff 0%,
+var(–bullet-color) 40%,
+var(–bullet-glow) 70%,
+transparent 100%
+);
+box-shadow: 0 0 8px 4px var(–bullet-glow);
+mix-blend-mode: screen;
+will-change: transform, opacity;
 }
 
-/* bullet */
-
-.bullet{
-
-position:fixed;
-
-width:14px;
-height:4px;
-
-background:linear-gradient(90deg,#fff,#ffaa00);
-
-border-radius:2px;
-
-box-shadow:0 0 12px rgba(255,170,0,.9);
-
-pointer-events:none;
-
-z-index:15;
-
-transform:translate(-50%,-50%);
-
+/* ============================================================
+HUD — ammo / version tag (subtle, bottom-left)
+============================================================ */
+#hud {
+position: fixed;
+bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+left: 18px;
+z-index: 30;
+pointer-events: none;
+font-family: ‘Courier New’, monospace;
+font-size: 11px;
+letter-spacing: 0.12em;
+color: rgba(255,255,255,0.28);
+text-transform: uppercase;
+opacity: 0;
+transition: opacity 1s ease;
 }
-
+#hud.visible { opacity: 1; }
 </style>
 
 </head>
-
 <body>
+
+<!-- ═══════════════════════════════════════════════
+     DOM STRUCTURE
+═══════════════════════════════════════════════ -->
 
 <video id="camera" autoplay playsinline muted></video>
 
-<div id="gunWrap">
-<img id="gun"
-src="https://pngimg.com/uploads/assault_rifle/assault_rifle_PNG1436.png">
+<div id="vignette"></div>
+<div id="screen-flash"></div>
+<div id="muzzle-flash"></div>
+<div id="muzzle-dot"></div>
+<div id="gun-wrap"><img id="gun-img" alt="gun" draggable="false"></div>
+<div id="hud">◈ READY</div>
+
+<div id="start-screen">
+  <div id="start-icon">🎯</div>
+  <div id="start-label">Tap to Arm</div>
+  <div id="start-sublabel">camera shooter</div>
 </div>
 
-<div id="muzzle"></div>
-
 <script>
+/* ================================================================
+   ██████████████████████████████████████████████████████████████
+   ██  TUNING CONSTANTS — edit these to adjust everything        ██
+   ██████████████████████████████████████████████████████████████
+   ================================================================ */
 
-const video = document.getElementById("camera")
-const gun = document.getElementById("gun")
-const muzzle = document.getElementById("muzzle")
+// ── Gun Position & Appearance ─────────────────────────────────────
+// All units are vw/vh unless noted. Positive right/bottom moves further into corner.
+const GUN_WIDTH_VW     = 72;    // gun image width as % of viewport width
+const GUN_RIGHT_VW     = -8;    // right edge offset (negative = more off-screen)
+const GUN_BOTTOM_VH    = -4;    // bottom edge offset (negative = more off-screen)
+const GUN_ROT_DEG      = -28;   // rotation: negative = tilts barrel toward upper-left
+const GUN_SAFE_BOTTOM  = true;  // respect env(safe-area-inset-bottom)
 
-let started=false
-let lastShot=0
+// ── Muzzle Flash Position ─────────────────────────────────────────
+// As percentage of the gun image's bounding box (0–100).
+// 0,0 = top-left of gun image. 100,100 = bottom-right.
+// Tune with SHOW_MUZZLE_DOT = true to see the red dot live.
+const MUZZLE_X         = 18;    // % from left of gun image → toward barrel tip
+const MUZZLE_Y         = 8;     // % from top of gun image  → toward barrel tip
 
-/* muzzle location relative to gun */
+// ── Bullet ───────────────────────────────────────────────────────
+const BULLET_SPEED     = 1400;  // px/sec — how fast bullet travels
+const BULLET_SIZE      = 10;    // px diameter
+const BULLET_ANGLE_DEG = -52;   // direction bullet travels (matches gun barrel angle)
+const BULLET_LIFETIME  = 520;   // ms before bullet is removed
 
-const MUZZLE_X = 0.10
-const MUZZLE_Y = 0.40
+// ── Fire Rate ────────────────────────────────────────────────────
+const FIRE_RATE_MS     = 120;   // minimum ms between shots (limits fire rate)
+const AUTO_FIRE_ON_HOLD = true; // hold finger = continuous fire
 
-/* start camera */
+// ── Recoil ───────────────────────────────────────────────────────
+const RECOIL_X_PX      = 18;    // gun kicks right on fire (px)
+const RECOIL_Y_PX      = -22;   // gun kicks up on fire (negative = up)
+const RECOIL_ROT_DEG   = 5;     // extra clockwise tilt during recoil
+const RECOIL_IN_MS     = 60;    // time to reach peak recoil
+const RECOIL_OUT_MS    = 160;   // time to return to rest
 
-async function startCamera(){
+// ── Muzzle Flash Timing ──────────────────────────────────────────
+const FLASH_IN_MS      = 25;    // flash rise time
+const FLASH_OUT_MS     = 90;    // flash decay time
+const FLASH_SCALE      = 1.4;   // max scale of flash burst
 
-const stream = await navigator.mediaDevices.getUserMedia({
-video:{facingMode:{ideal:"environment"}},
-audio:false
-})
+// ── Screen Flash ─────────────────────────────────────────────────
+const SCREEN_FLASH_ON  = true;  // enable subtle screen brightening on fire
+const SCREEN_FLASH_MS  = 80;    // duration of screen flash
 
-video.srcObject = stream
+// ── Debug ────────────────────────────────────────────────────────
+const SHOW_MUZZLE_DOT  = false; // set true to see red muzzle position dot
 
+/* ================================================================
+   GUN IMAGE SOURCE
+   ─────────────────────────────────────────────────────────────
+   Using a data-URI SVG so there are zero external dependencies
+   and it works offline / on GitHub Pages without any CDN.
+
+   TO REPLACE WITH YOUR OWN PNG:
+     1. Upload your gun PNG to your repo (e.g. gun.png)
+     2. Change the line below to: const GUN_SRC = 'gun.png';
+     3. Make sure the PNG has a transparent background.
+================================================================ */
+const GUN_SRC = (() => {
+  // Procedural SVG gun — drawn to look like a held pistol/SMG
+  // from FPS perspective, barrel pointing upper-left
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" width="320" height="220">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#5a5a5a"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <linearGradient id="barrel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#666"/>
+      <stop offset="100%" stop-color="#222"/>
+    </linearGradient>
+    <linearGradient id="grip" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#2d2d2d"/>
+      <stop offset="100%" stop-color="#111"/>
+    </linearGradient>
+    <linearGradient id="slide" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#4a4a4a"/>
+      <stop offset="100%" stop-color="#1e1e1e"/>
+    </linearGradient>
+    <filter id="metalshine">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- === BARREL === -->
+  <!-- Main barrel tube -->
+  <rect x="18" y="50" width="130" height="22" rx="3" fill="url(#barrel)" filter="url(#metalshine)"/>
+  <!-- Barrel top edge highlight -->
+  <rect x="18" y="50" width="130" height="3" rx="1" fill="#888" opacity="0.6"/>
+  <!-- Suppressor / muzzle device -->
+  <rect x="8" y="46" width="22" height="30" rx="4" fill="#333"/>
+  <rect x="8" y="46" width="22" height="4"  rx="2" fill="#555" opacity="0.7"/>
+  <!-- Barrel vent slots -->
+  <rect x="50" y="53" width="8" height="14" rx="1" fill="#111" opacity="0.7"/>
+  <rect x="65" y="53" width="8" height="14" rx="1" fill="#111" opacity="0.7"/>
+  <rect x="80" y="53" width="8" height="14" rx="1" fill="#111" opacity="0.7"/>
+
+  <!-- === SLIDE / UPPER RECEIVER === -->
+  <rect x="130" y="44" width="110" height="36" rx="5" fill="url(#slide)"/>
+  <rect x="130" y="44" width="110" height="5"  rx="2" fill="#666" opacity="0.5"/>
+  <!-- Slide serrations -->
+  <rect x="200" y="47" width="4" height="30" rx="1" fill="#111" opacity="0.55"/>
+  <rect x="210" y="47" width="4" height="30" rx="1" fill="#111" opacity="0.55"/>
+  <rect x="220" y="47" width="4" height="30" rx="1" fill="#111" opacity="0.55"/>
+  <!-- Ejection port -->
+  <rect x="155" y="50" width="35" height="18" rx="2" fill="#111" opacity="0.8"/>
+  <!-- Sight (front) -->
+  <rect x="25"  y="43" width="5" height="8" rx="1" fill="#888"/>
+  <!-- Sight (rear) -->
+  <rect x="218" y="40" width="14" height="7" rx="1" fill="#777"/>
+  <rect x="220" y="40" width="3"  height="7" rx="1" fill="#111" opacity="0.7"/>
+  <rect x="227" y="40" width="3"  height="7" rx="1" fill="#111" opacity="0.7"/>
+
+  <!-- === LOWER RECEIVER / BODY === -->
+  <path d="M145,80 L240,80 L240,120 Q240,130 230,135
+            L200,145 Q185,152 175,148 L148,140
+            Q135,136 132,124 L130,100 Q130,85 145,80Z"
+        fill="url(#body)"/>
+  <!-- Trigger guard -->
+  <path d="M168,140 Q160,158 148,158 Q136,158 130,148 L130,138 L148,140Z"
+        fill="#2a2a2a" stroke="#111" stroke-width="1"/>
+  <!-- Trigger -->
+  <rect x="148" y="128" width="5" height="18" rx="2" fill="#555"/>
+  <!-- Rail / picatinny rail bottom -->
+  <rect x="135" y="118" width="60" height="6" rx="1" fill="#444"/>
+  <rect x="138" y="118" width="6"  height="6" rx="0" fill="#333"/>
+  <rect x="148" y="118" width="6"  height="6" rx="0" fill="#333"/>
+  <rect x="158" y="118" width="6"  height="6" rx="0" fill="#333"/>
+  <rect x="168" y="118" width="6"  height="6" rx="0" fill="#333"/>
+
+  <!-- === GRIP === -->
+  <path d="M230,80 L242,80 L252,90 L258,115
+            Q260,135 255,148 L242,165 Q235,172 225,170
+            L215,168 Q205,164 205,155 L205,140 L200,145 L230,135Z"
+        fill="url(#grip)"/>
+  <!-- Grip texture lines -->
+  <line x1="225" y1="100" x2="248" y2="100" stroke="#111" stroke-width="1.5" opacity="0.6"/>
+  <line x1="223" y1="110" x2="252" y2="110" stroke="#111" stroke-width="1.5" opacity="0.6"/>
+  <line x1="221" y1="120" x2="254" y2="120" stroke="#111" stroke-width="1.5" opacity="0.6"/>
+  <line x1="219" y1="130" x2="255" y2="130" stroke="#111" stroke-width="1.5" opacity="0.6"/>
+  <line x1="217" y1="140" x2="252" y2="140" stroke="#111" stroke-width="1.5" opacity="0.6"/>
+  <line x1="215" y1="150" x2="248" y2="150" stroke="#111" stroke-width="1.5" opacity="0.6"/>
+  <!-- Magazine base -->
+  <rect x="218" y="162" width="32" height="10" rx="3" fill="#1a1a1a"/>
+
+  <!-- === HAND (right hand holding) === -->
+  <!-- Palm -->
+  <ellipse cx="238" cy="140" rx="22" ry="28" fill="#c8956c"/>
+  <!-- Thumb -->
+  <path d="M218,120 Q210,108 215,100 Q222,94 228,102 L228,120Z"
+        fill="#bf8a5f"/>
+  <!-- Knuckle highlights -->
+  <ellipse cx="233" cy="118" rx="6"  ry="4" fill="#d4a07a" opacity="0.6"/>
+  <ellipse cx="243" cy="116" rx="5"  ry="4" fill="#d4a07a" opacity="0.5"/>
+  <!-- Finger wrap around grip (partial fingers) -->
+  <path d="M255,102 Q268,105 270,115 Q272,125 265,128 L255,125Z"
+        fill="#c8956c"/>
+  <path d="M256,118 Q268,120 270,130 Q270,140 263,143 L255,140Z"
+        fill="#bf8a5f"/>
+  <!-- Skin shadow / depth -->
+  <ellipse cx="238" cy="148" rx="20" ry="12" fill="#a0704a" opacity="0.35"/>
+
+  <!-- === ACCENT: cyan tactical light === -->
+  <rect x="136" y="124" width="12" height="8" rx="2" fill="#00aaff" opacity="0.15"/>
+  <rect x="136" y="124" width="12" height="3"  rx="1" fill="#44ccff" opacity="0.5"/>
+</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+})();
+
+/* ================================================================
+   STATE
+================================================================ */
+let cameraStarted   = false;
+let lastFireTime    = 0;
+let autoFireHandle  = null;
+let isPointerDown   = false;
+let gunRect         = null;  // updated on resize
+let muzzleWorldPos  = { x: 0, y: 0 }; // screen coords of muzzle tip
+let gunBaseTransform = '';  // resting CSS transform string
+let activeBullets   = [];
+
+/* ================================================================
+   ELEMENTS
+================================================================ */
+const $video       = document.getElementById('camera');
+const $startScreen = document.getElementById('start-screen');
+const $gunWrap     = document.getElementById('gun-wrap');
+const $gunImg      = document.getElementById('gun-img');
+const $muzzleFlash = document.getElementById('muzzle-flash');
+const $muzzleDot   = document.getElementById('muzzle-dot');
+const $screenFlash = document.getElementById('screen-flash');
+const $hud         = document.getElementById('hud');
+
+/* ================================================================
+   GUN SETUP
+================================================================ */
+$gunImg.src = GUN_SRC;
+
+function positionGun() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const safeBottom = parseFloat(
+    getComputedStyle(document.documentElement)
+      .getPropertyValue('--sab') || '0'
+  ) || getSafeAreaBottom();
+
+  const w = vw * (GUN_WIDTH_VW / 100);
+  // Maintain SVG aspect ratio (320:220)
+  const h = w * (220 / 320);
+
+  const right  = vw * (GUN_RIGHT_VW / 100);
+  const bottom = vh * (GUN_BOTTOM_VH / 100);
+  const extraBottom = GUN_SAFE_BOTTOM ? safeBottom : 0;
+
+  const left = vw - w + right;    // right-anchor
+  const top  = vh - h - bottom - extraBottom;
+
+  $gunWrap.style.cssText = `
+    position: fixed;
+    left: ${left}px;
+    top: ${top}px;
+    width: ${w}px;
+    height: ${h}px;
+    transform-origin: ${MUZZLE_X}% ${MUZZLE_Y}%;
+    z-index: 20;
+    pointer-events: none;
+    will-change: transform;
+  `;
+
+  gunBaseTransform = `rotate(${GUN_ROT_DEG}deg)`;
+  $gunWrap.style.transform = gunBaseTransform;
+
+  // Cache bounding rect AFTER transform settles
+  requestAnimationFrame(() => {
+    gunRect = $gunWrap.getBoundingClientRect();
+    updateMuzzlePosition();
+  });
 }
 
-/* get barrel position */
-
-function getMuzzlePoint(){
-
-const r = gun.getBoundingClientRect()
-
-const x = r.left + r.width * MUZZLE_X
-const y = r.top + r.height * MUZZLE_Y
-
-return {x,y}
-
+function getSafeAreaBottom() {
+  // Read CSS env() via a probe element
+  const probe = document.createElement('div');
+  probe.style.cssText = `
+    position:fixed; bottom:0; left:0; width:1px;
+    height: env(safe-area-inset-bottom, 0px);
+    pointer-events:none; visibility:hidden;
+  `;
+  document.body.appendChild(probe);
+  const h = probe.getBoundingClientRect().height;
+  document.body.removeChild(probe);
+  return h;
 }
 
-/* recoil */
+function updateMuzzlePosition() {
+  if (!gunRect) return;
+  // Muzzle offset within the rotated bounding box
+  // Note: getBoundingClientRect() gives the AXIS-ALIGNED box of the rotated element.
+  // For accurate muzzle position we compute from gun image's own space
+  // then apply the rotation transform manually.
+  const w = gunRect.width;
+  const h = gunRect.height;
 
-function recoil(){
+  // Point in un-rotated gun coords (relative to gun origin)
+  const localX = (MUZZLE_X / 100) * w;
+  const localY = (MUZZLE_Y / 100) * h;
 
-gun.classList.remove("recoil")
+  // Transform-origin in screen space = gun's top-left + transform-origin offset
+  const originX = gunRect.left + (MUZZLE_X / 100) * w;
+  const originY = gunRect.top  + (MUZZLE_Y / 100) * h;
 
-void gun.offsetWidth
+  // After rotation around the origin, the muzzle point (which IS the origin) stays fixed
+  // So the muzzle world position is simply the transform-origin point
+  muzzleWorldPos.x = originX;
+  muzzleWorldPos.y = originY;
 
-gun.classList.add("recoil")
+  // Position muzzle flash & dot
+  $muzzleFlash.style.left = muzzleWorldPos.x + 'px';
+  $muzzleFlash.style.top  = muzzleWorldPos.y + 'px';
 
+  if (SHOW_MUZZLE_DOT) {
+    $muzzleDot.style.display = 'block';
+    $muzzleDot.style.left    = muzzleWorldPos.x + 'px';
+    $muzzleDot.style.top     = muzzleWorldPos.y + 'px';
+  }
 }
 
-/* muzzle flash */
-
-function flash(x,y){
-
-muzzle.style.left = x+"px"
-muzzle.style.top = y+"px"
-
-muzzle.classList.remove("flash")
-
-void muzzle.offsetWidth
-
-muzzle.classList.add("flash")
-
+/* ================================================================
+   CAMERA
+================================================================ */
+async function startCamera() {
+  if (cameraStarted) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { exact: 'environment' },
+        width:  { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    });
+    $video.srcObject = stream;
+    await $video.play();
+    cameraStarted = true;
+    $startScreen.classList.add('hidden');
+    setTimeout(() => { $startScreen.style.display = 'none'; }, 600);
+    $hud.classList.add('visible');
+  } catch (err) {
+    // Fallback: try without exact facingMode (simulator / front-cam devices)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false
+      });
+      $video.srcObject = stream;
+      await $video.play();
+      cameraStarted = true;
+      $startScreen.classList.add('hidden');
+      setTimeout(() => { $startScreen.style.display = 'none'; }, 600);
+      $hud.classList.add('visible');
+    } catch (e) {
+      document.getElementById('start-label').textContent  = 'Camera unavailable';
+      document.getElementById('start-sublabel').textContent = err.message;
+    }
+  }
 }
 
-/* spawn bullet */
+/* ================================================================
+   FIRE
+================================================================ */
+function fire() {
+  const now = performance.now();
+  if (now - lastFireTime < FIRE_RATE_MS) return;
+  lastFireTime = now;
 
-function spawnBullet(x,y){
+  updateMuzzlePosition(); // make sure position is fresh
 
-const b = document.createElement("div")
-
-b.className="bullet"
-
-document.body.appendChild(b)
-
-const angle = (-18) * Math.PI/180
-
-const distance = Math.max(innerWidth,innerHeight)
-
-const endX = x + Math.cos(angle) * -distance
-const endY = y + Math.sin(angle) * distance
-
-b.style.left = x+"px"
-b.style.top = y+"px"
-
-const start = performance.now()
-
-function animate(t){
-
-const p = (t-start)/220
-
-if(p>=1){
-
-b.remove()
-return
-
+  doRecoil();
+  doMuzzleFlash();
+  spawnBullet();
+  if (SCREEN_FLASH_ON) doScreenFlash();
+  doHaptic();
 }
 
-const cx = x + (endX-x)*p
-const cy = y + (endY-y)*p
+/* ── Recoil ─────────────────────────────────────────────────── */
+function doRecoil() {
+  // Kick
+  const kickTransform = `translate(${RECOIL_X_PX}px, ${RECOIL_Y_PX}px) rotate(${GUN_ROT_DEG + RECOIL_ROT_DEG}deg)`;
+  $gunWrap.style.transition = `transform ${RECOIL_IN_MS}ms cubic-bezier(0.1,0.8,0.5,1)`;
+  $gunWrap.style.transform  = kickTransform;
 
-b.style.left=cx+"px"
-b.style.top=cy+"px"
-b.style.opacity = 1-p
+  // Return
+  setTimeout(() => {
+    $gunWrap.style.transition = `transform ${RECOIL_OUT_MS}ms cubic-bezier(0.25,0.46,0.45,0.94)`;
+    $gunWrap.style.transform  = gunBaseTransform;
 
-requestAnimationFrame(animate)
-
+    // After return, re-cache rect
+    setTimeout(() => {
+      gunRect = $gunWrap.getBoundingClientRect();
+      updateMuzzlePosition();
+    }, RECOIL_OUT_MS + 10);
+  }, RECOIL_IN_MS);
 }
 
-requestAnimationFrame(animate)
+/* ── Muzzle Flash ─────────────────────────────────────────────── */
+let flashAnimId = null;
+function doMuzzleFlash() {
+  if (flashAnimId) {
+    cancelAnimationFrame(flashAnimId); flashAnimId = null;
+    $muzzleFlash.style.transition = 'none';
+    $muzzleFlash.style.opacity    = '0';
+    $muzzleFlash.style.transform  = 'translate(-50%,-50%) scale(0.3)';
+    void $muzzleFlash.offsetWidth; // reflow
+  }
 
+  // Randomize flash rotation slightly for organic feel
+  const rot = (Math.random() * 60 - 30);
+  $muzzleFlash.style.transform  = `translate(-50%,-50%) scale(${FLASH_SCALE}) rotate(${rot}deg)`;
+  $muzzleFlash.style.transition = `opacity ${FLASH_IN_MS}ms ease-out, transform ${FLASH_IN_MS}ms ease-out`;
+  $muzzleFlash.style.opacity    = '1';
+
+  setTimeout(() => {
+    $muzzleFlash.style.transition = `opacity ${FLASH_OUT_MS}ms ease-in, transform ${FLASH_OUT_MS}ms ease-in`;
+    $muzzleFlash.style.opacity    = '0';
+    $muzzleFlash.style.transform  = `translate(-50%,-50%) scale(0.2) rotate(${rot}deg)`;
+  }, FLASH_IN_MS);
 }
 
-/* shooting */
-
-function shoot(){
-
-const now = Date.now()
-
-if(now-lastShot<120) return
-
-lastShot=now
-
-const {x,y}=getMuzzlePoint()
-
-if(navigator.vibrate) navigator.vibrate(25)
-
-recoil()
-
-flash(x,y)
-
-spawnBullet(x,y)
-
+/* ── Screen Flash ────────────────────────────────────────────── */
+function doScreenFlash() {
+  $screenFlash.style.transition = 'none';
+  $screenFlash.style.opacity    = '1';
+  void $screenFlash.offsetWidth;
+  $screenFlash.style.transition = `opacity ${SCREEN_FLASH_MS}ms ease-out`;
+  $screenFlash.style.opacity    = '0';
 }
 
-/* tap to start / shoot */
-
-document.body.addEventListener("click",async()=>{
-
-if(!started){
-
-await startCamera()
-
-started=true
-
+/* ── Haptic ──────────────────────────────────────────────────── */
+function doHaptic() {
+  if (navigator.vibrate) {
+    navigator.vibrate(18); // short sharp buzz
+  }
 }
 
-shoot()
+/* ── Bullet ──────────────────────────────────────────────────── */
+function spawnBullet() {
+  const el = document.createElement('div');
+  el.className = 'bullet';
+  el.style.cssText = `
+    width:${BULLET_SIZE}px;
+    height:${BULLET_SIZE}px;
+    left:${muzzleWorldPos.x}px;
+    top:${muzzleWorldPos.y}px;
+    transform: translate(-50%,-50%);
+    opacity: 1;
+  `;
+  document.body.appendChild(el);
 
-})
+  const rad    = (BULLET_ANGLE_DEG * Math.PI) / 180;
+  const dx     = Math.cos(rad); // direction X per pixel
+  const dy     = Math.sin(rad); // direction Y per pixel
+  const speed  = BULLET_SPEED;  // px/sec
 
+  let x = muzzleWorldPos.x;
+  let y = muzzleWorldPos.y;
+  let startTime = null;
+  let opacity = 1;
+
+  const bullet = { el, alive: true };
+  activeBullets.push(bullet);
+
+  function step(ts) {
+    if (!bullet.alive) return;
+    if (!startTime) startTime = ts;
+    const elapsed = ts - startTime; // ms
+
+    if (elapsed >= BULLET_LIFETIME) {
+      el.remove();
+      bullet.alive = false;
+      activeBullets = activeBullets.filter(b => b !== bullet);
+      return;
+    }
+
+    const progress = elapsed / BULLET_LIFETIME;
+    // Travel
+    const dist = (speed * elapsed) / 1000;
+    x = muzzleWorldPos.x + dx * dist;
+    y = muzzleWorldPos.y + dy * dist;
+
+    // Fade out in last 40%
+    opacity = progress > 0.6 ? 1 - ((progress - 0.6) / 0.4) : 1;
+
+    // Slight shrink as it travels (perspective)
+    const scale = 1 - progress * 0.5;
+
+    el.style.left    = x + 'px';
+    el.style.top     = y + 'px';
+    el.style.opacity = opacity;
+    el.style.transform = `translate(-50%,-50%) scale(${scale})`;
+
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ================================================================
+   INPUT HANDLING
+================================================================ */
+function onPointerDown(e) {
+  e.preventDefault();
+  if (!cameraStarted) {
+    startCamera();
+    return;
+  }
+  isPointerDown = true;
+  fire();
+
+  if (AUTO_FIRE_ON_HOLD) {
+    autoFireHandle = setInterval(fire, FIRE_RATE_MS);
+  }
+}
+
+function onPointerUp(e) {
+  isPointerDown = false;
+  if (autoFireHandle) {
+    clearInterval(autoFireHandle);
+    autoFireHandle = null;
+  }
+}
+
+document.addEventListener('pointerdown',  onPointerDown, { passive: false });
+document.addEventListener('pointerup',    onPointerUp);
+document.addEventListener('pointercancel', onPointerUp);
+
+// Prevent context menu on long press (iOS)
+document.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ================================================================
+   RESIZE
+================================================================ */
+function onResize() {
+  positionGun();
+}
+
+window.addEventListener('resize', onResize);
+// Also handle iOS orientation change
+window.addEventListener('orientationchange', () => {
+  setTimeout(onResize, 300); // wait for layout to settle
+});
+
+/* ================================================================
+   INIT
+================================================================ */
+positionGun();
+
+// Wait for gun image to load before final position
+$gunImg.addEventListener('load', () => {
+  positionGun();
+});
+
+// Polyfill: some browsers need this for env(safe-area-inset-bottom)
+// We set a CSS variable on :root that we can read in JS
+document.documentElement.style.setProperty('--sab', getSafeAreaBottom() + 'px');
 </script>
 
 </body>
