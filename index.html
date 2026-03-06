@@ -38,8 +38,11 @@ z-index:10;
 position:absolute;
 
 /* first-person position */
-right:-22vw;
-bottom:-10vh;
+right:-8vw;
+bottom:calc(16vh + env(safe-area-inset-bottom));
+width:140vw;
+max-width:950px;
+transform:rotate(-12deg);
 
 /* size tuned for Pro Max */
 width:155vw;
