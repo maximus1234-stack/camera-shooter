@@ -1,88 +1,254 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Camera Shooter</title>
+  <style>
+    html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:-apple-system,system-ui}
+    video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
 
-body{
-margin:0;
-overflow:hidden;
-background:black;
-}
+    /* ---- GUN OVERLAY ---- */
+    #gunWrap{
+      position:fixed;
+      inset:auto 0 0 0;
+      height:55vh;          /* how much vertical space the gun can occupy */
+      pointer-events:none;
+      z-index:10;
+    }
 
-video{
-position:fixed;
-width:100%;
-height:100%;
-object-fit:cover;
-}
+    #gun{
+      position:absolute;
+      right:-10vw;          /* push slightly off-screen to feel "held" */
+      bottom:-10vh;
+      width:min(110vw, 900px);
+      transform-origin: 82% 78%; /* anchor near grip/stock area */
+      transform: translate3d(0,0,0) rotate(-18deg);
+      filter: drop-shadow(0 12px 18px rgba(0,0,0,.45));
+      will-change: transform;
+    }
 
-/* gun image */
-#gun{
-position:fixed;
-bottom:-20px;
-left:50%;
-transform:translateX(-50%);
-width:420px;
-pointer-events:none;
-z-index:5;
-}
+    /* recoil class */
+    .recoil{
+      animation: recoilKick 90ms ease-out;
+    }
+    @keyframes recoilKick{
+      0%   { transform: translate3d(0,0,0) rotate(-18deg); }
+      45%  { transform: translate3d(-10px, 12px, 0) rotate(-15deg); } /* kick back/down */
+      100% { transform: translate3d(0,0,0) rotate(-18deg); }
+    }
 
-/* muzzle flash */
-#flash{
-position:fixed;
-top:40%;
-left:50%;
-transform:translateX(-50%);
-width:120px;
-height:120px;
-background:radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,200,0,0.8) 40%, rgba(255,150,0,0.2) 70%, transparent 80%);
-opacity:0;
-pointer-events:none;
-z-index:6;
-transition:opacity 0.05s;
-}
+    /* ---- MUZZLE FLASH ---- */
+    #muzzle{
+      position:fixed;
+      width:140px;
+      height:140px;
+      border-radius:50%;
+      opacity:0;
+      pointer-events:none;
+      z-index:20;
+      background:
+        radial-gradient(circle,
+          rgba(255,255,255,1) 0%,
+          rgba(255,220,120,.95) 25%,
+          rgba(255,170,0,.55) 45%,
+          rgba(255,90,0,.25) 65%,
+          rgba(0,0,0,0) 75%);
+      mix-blend-mode: screen;
+      filter: blur(.2px);
+      transform: translate(-50%,-50%);
+    }
 
-</style>
+    /* quick flash */
+    .flashOn{
+      animation: muzzleFlash 70ms ease-out;
+    }
+    @keyframes muzzleFlash{
+      0%   { opacity:0; transform: translate(-50%,-50%) scale(.75); }
+      30%  { opacity:1; transform: translate(-50%,-50%) scale(1.05); }
+      100% { opacity:0; transform: translate(-50%,-50%) scale(1.25); }
+    }
+
+    /* ---- BULLETS ---- */
+    .bullet{
+      position:fixed;
+      width:12px;
+      height:4px;
+      border-radius:2px;
+      background: linear-gradient(90deg, rgba(255,230,160,1), rgba(255,170,0,1));
+      box-shadow: 0 0 10px rgba(255,170,0,.65);
+      z-index:15;
+      pointer-events:none;
+      transform: translate(-50%,-50%);
+      will-change: transform, opacity;
+    }
+
+    /* tiny screen flash like camera exposure */
+    #screenFlash{
+      position:fixed; inset:0;
+      background:#fff;
+      opacity:0;
+      pointer-events:none;
+      z-index:30;
+      transition: opacity 60ms linear;
+    }
+
+    /* hint */
+    #hint{
+      position:fixed;
+      left:50%; top:50%;
+      transform:translate(-50%,-50%);
+      color:#fff;
+      background:rgba(0,0,0,.55);
+      padding:12px 14px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.18);
+      text-align:center;
+      z-index:40;
+    }
+  </style>
 </head>
-
 <body>
+  <video id="v" autoplay playsinline muted></video>
 
-<video id="camera" autoplay playsinline></video>
+  <div id="gunWrap">
+    <!-- keep your current AR image URL or swap it -->
+    <img id="gun" alt="AR-15"
+      src="https://pngimg.com/uploads/assault_rifle/assault_rifle_PNG1436.png">
+  </div>
 
-<img id="gun" src="https://pngimg.com/uploads/assault_rifle/assault_rifle_PNG1436.png">
-
-<div id="flash"></div>
+  <div id="muzzle"></div>
+  <div id="screenFlash"></div>
+  <div id="hint">Tap once to start camera.<br/>Then tap to shoot.</div>
 
 <script>
+(() => {
+  const v = document.getElementById('v');
+  const gun = document.getElementById('gun');
+  const muzzle = document.getElementById('muzzle');
+  const screenFlash = document.getElementById('screenFlash');
+  const hint = document.getElementById('hint');
 
-const video = document.getElementById("camera");
-const flash = document.getElementById("flash");
+  let started = false;
+  let lastShot = 0;
 
-navigator.mediaDevices.getUserMedia({
-video:{facingMode:"environment"}
-})
-.then(stream=>{
-video.srcObject = stream;
-});
+  // --- Camera start ---
+  async function startCamera(){
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{ facingMode:{ ideal:"environment" } }
+    });
+    v.srcObject = stream;
+    await v.play();
+    started = true;
+    hint.style.display = "none";
+  }
 
-/* shooting */
+  // --- Helpers ---
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
 
-document.body.addEventListener("click",()=>{
+  // Estimate muzzle position based on gun image box.
+  // Tweak these 2 numbers if your muzzle is slightly off:
+  const MUZZLE_X = 0.12; // % from LEFT of gun image
+  const MUZZLE_Y = 0.46; // % from TOP of gun image
 
-navigator.vibrate(40);
+  function getMuzzlePoint(){
+    const r = gun.getBoundingClientRect();
+    // base point in screen coords
+    const x = r.left + r.width * MUZZLE_X;
+    const y = r.top  + r.height * MUZZLE_Y;
+    return {x, y};
+  }
 
-/* flash effect */
+  function doScreenFlash(){
+    screenFlash.style.opacity = "0.18";
+    setTimeout(()=>screenFlash.style.opacity="0", 70);
+  }
 
-flash.style.opacity=1;
+  function doMuzzleFlash(x,y){
+    muzzle.style.left = x + "px";
+    muzzle.style.top  = y + "px";
+    muzzle.classList.remove("flashOn");
+    // restart animation
+    void muzzle.offsetWidth;
+    muzzle.classList.add("flashOn");
+  }
 
-setTimeout(()=>{
-flash.style.opacity=0;
-},60);
+  function doRecoil(){
+    gun.classList.remove("recoil");
+    void gun.offsetWidth;
+    gun.classList.add("recoil");
+  }
 
-});
+  function spawnBullet(x,y){
+    const b = document.createElement("div");
+    b.className = "bullet";
+    document.body.appendChild(b);
 
+    // Bullet direction matches gun’s “aim”: mostly up-left (because we rotated -18deg)
+    // Adjust angle if you change gun rotation.
+    const angleDeg = -18 - 8; // aim a bit more upward than the gun
+    const ang = angleDeg * Math.PI/180;
+
+    // Starting point and travel distance
+    const startX = x;
+    const startY = y;
+    const dist = Math.max(innerWidth, innerHeight) * 0.9;
+
+    const endX = startX + Math.cos(ang) * -dist; // negative to go left
+    const endY = startY + Math.sin(ang) *  dist; // sin(-) goes up; with our sign choices, this looks like forward
+
+    // set initial
+    b.style.left = startX + "px";
+    b.style.top  = startY + "px";
+
+    const start = performance.now();
+    const dur = 220; // ms
+
+    function tick(t){
+      const p = clamp((t - start)/dur, 0, 1);
+      // ease out
+      const e = 1 - Math.pow(1 - p, 2);
+
+      const cx = startX + (endX - startX) * e;
+      const cy = startY + (endY - startY) * e;
+
+      b.style.left = cx + "px";
+      b.style.top  = cy + "px";
+      b.style.opacity = (1 - p).toFixed(3);
+
+      if(p < 1) requestAnimationFrame(tick);
+      else b.remove();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function shoot(){
+    const now = Date.now();
+    if(now - lastShot < 110) return; // fire rate limit
+    lastShot = now;
+
+    const {x,y} = getMuzzlePoint();
+
+    if(navigator.vibrate) navigator.vibrate(25);
+    doRecoil();
+    doMuzzleFlash(x,y);
+    doScreenFlash();
+    spawnBullet(x,y);
+  }
+
+  // Tap behavior
+  document.body.addEventListener("click", async () => {
+    try{
+      if(!started) await startCamera();
+      shoot();
+    }catch(e){
+      hint.style.display = "block";
+      hint.innerHTML = "Camera blocked.<br/>Settings → Safari → Camera → Allow, then refresh.";
+    }
+  });
+
+})();
 </script>
-
 </body>
 </html>
