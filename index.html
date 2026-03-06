@@ -32,11 +32,6 @@
       transparent 42%, rgba(0,0,0,0.48) 100%);
   }
 
-  /* ── PLUNGER WRAPPER ─────────────────────────────────
-     JS writes left/top/width/height and all transforms.
-     transform-origin is set to the cup-end (front tip)
-     so squash/stick deformation looks physically correct.
-  ──────────────────────────────────────────────────── */
   #plunger-wrap {
     position: fixed;
     z-index: 20;
@@ -51,10 +46,6 @@
     will-change: transform, filter;
   }
 
-  /* ── SUCTION RING — appears on impact ───────────────
-     A concentric ring pulse that radiates out from the
-     stuck point to sell the suction-cup effect.
-  ──────────────────────────────────────────────────── */
   #suction-ring {
     position: fixed;
     z-index: 19;
@@ -69,7 +60,6 @@
     width: 80px; height: 80px;
   }
 
-  /* ── TAP RIPPLE ──────────────────────────────────── */
   .tap-ripple {
     position: fixed; z-index: 30;
     pointer-events: none;
@@ -84,7 +74,6 @@
     100% { transform: translate(-50%,-50%) scale(9); opacity: 0;   }
   }
 
-  /* ── START SCREEN ────────────────────────────────── */
   #start-screen {
     position: fixed; inset: 0; z-index: 50;
     display: flex; flex-direction: column;
@@ -99,8 +88,8 @@
     animation: bob 2s ease-in-out infinite;
   }
   @keyframes bob {
-    0%, 100% { transform: translateY(0)    rotate(-6deg); }
-    50%       { transform: translateY(-10px) rotate(6deg); }
+    0%, 100% { transform: translateY(0) rotate(-6deg); }
+    50% { transform: translateY(-10px) rotate(6deg); }
   }
   #start-label {
     font-family: Georgia, 'Times New Roman', serif;
@@ -127,8 +116,7 @@
 <div id="suction-ring"></div>
 
 <div id="plunger-wrap">
-  <img id="plunger-img" alt="" draggable="false"
-       onerror="useFallback()">
+  <img id="plunger-img" alt="" draggable="false" onerror="useFallback()">
 </div>
 
 <div id="start-screen">
@@ -139,216 +127,111 @@
 </div>
 
 <script>
-/* ===================================================================
-   ████  TUNING CONSTANTS  ████
-   ===================================================================
-   All lengths in vw/vh/px. Angles in degrees.
-=================================================================== */
-
-// ── Image source ─────────────────────────────────────────────────
-// Place a transparent PNG named plunger.png in your repo root for
-// a photographic look. Missing file → built-in SVG fallback below.
 const PLUNGER_SRC = 'plunger.png';
 
-// ── Plunger size at rest ─────────────────────────────────────────
-const PLUNGER_WIDTH_VW = 38;   // width as % of viewport width
-
-// ── Rest position (bottom-center, held like a weapon) ────────────
-// Negative bottom = partially off-screen for a natural "held" feel.
-const REST_BOTTOM_VH   = -8;   // vh from bottom edge
-// Horizontal offset from center: 0 = centered, positive = right.
-const REST_OFFSET_VW   = 6;    // vw nudge right of center
-
-// ── Rest rotation ────────────────────────────────────────────────
-// Cup points upward toward camera center. 0 = cup facing right.
-// -90 = cup pointing straight up (directly at camera).
+/* updated values */
+const PLUNGER_WIDTH_VW = 26;
+const REST_BOTTOM_VH   = -8;
+const REST_OFFSET_VW   = 6;
 const REST_ROT_DEG     = -82;
 
-// ── Throw target (where plunger sticks on screen) ────────────────
-// As % of viewport. 50/35 = upper-center, feels "in front of you."
-const TARGET_X_VW      = 50;   // % from left
-const TARGET_Y_VH      = 35;   // % from top
+const TARGET_X_VW      = 50;
+const TARGET_Y_VH      = 18;
 
-// ── Throw speed / duration ───────────────────────────────────────
-const THROW_DURATION_MS  = 380;   // ms for plunger to reach target
-const WINDUP_MS          = 85;    // wind-up pull-back before launch
+const THROW_DURATION_MS  = 520;
+const WINDUP_MS          = 85;
 
-// ── Scale: plunger shrinks as it flies "away" ────────────────────
-const THROW_END_SCALE    = 0.55;  // scale at target (perspective shrink)
+const THROW_END_SCALE    = 0.22;
 
-// ── Wobble during flight ─────────────────────────────────────────
-// Slight rotation oscillation while flying — not silly, just alive.
-const WOBBLE_DEG         = 12;    // max wobble angle each side
+const WOBBLE_DEG         = 12;
 
-// ── Impact squash ────────────────────────────────────────────────
-// Squash on impact: scaleX grows, scaleY shrinks, simulating the
-// rubber cup compressing against the surface.
-const SQUASH_X           = 1.22;  // horizontal stretch on impact
-const SQUASH_Y           = 0.72;  // vertical squash on impact
-const SQUASH_MS          = 80;    // time to reach peak squash
-const SETTLE_MS          = 160;   // time to relax back to normal
+const SQUASH_X           = 1.22;
+const SQUASH_Y           = 0.72;
+const SQUASH_MS          = 80;
+const SETTLE_MS          = 160;
 
-// ── Stick duration before reset ──────────────────────────────────
-const STICK_DURATION_MS  = 900;   // ms plunger stays stuck
-
-// ── Reset delay after stick ──────────────────────────────────────
-const RESET_DELAY_MS     = 200;   // ms between unstick and new plunger
-
-// ── Fire rate throttle ────────────────────────────────────────────
+const STICK_DURATION_MS  = 900;
+const RESET_DELAY_MS     = 200;
 const MIN_THROW_MS       = 700;
 
-/* ===================================================================
-   BUILT-IN SVG PLUNGER
-   ─────────────────────────────────────────────────────────────────
-   Viewed from slightly above-behind, cup pointing toward viewer.
-   Features: rubber cup with concentric fold rings, wooden handle,
-   metal ferrule, ambient occlusion shadow under cup.
-   Rendered in portrait orientation: cup at top, handle below.
-=================================================================== */
 const FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg"
   viewBox="0 0 200 520" width="200" height="520">
 <defs>
-  <!-- Rubber cup — deep red/maroon -->
   <radialGradient id="cup" cx="42%" cy="38%" r="62%">
-    <stop offset="0%"   stop-color="#cc3322"/>
-    <stop offset="30%"  stop-color="#a02015"/>
-    <stop offset="65%"  stop-color="#7a1208"/>
+    <stop offset="0%" stop-color="#cc3322"/>
+    <stop offset="30%" stop-color="#a02015"/>
+    <stop offset="65%" stop-color="#7a1208"/>
     <stop offset="100%" stop-color="#3d0804"/>
   </radialGradient>
-  <!-- Cup rim highlight -->
   <radialGradient id="cupRim" cx="50%" cy="50%" r="50%">
-    <stop offset="0%"   stop-color="rgba(255,120,90,0.0)"/>
-    <stop offset="72%"  stop-color="rgba(255,120,90,0.0)"/>
-    <stop offset="88%"  stop-color="rgba(255,150,110,0.35)"/>
+    <stop offset="0%" stop-color="rgba(255,120,90,0.0)"/>
+    <stop offset="72%" stop-color="rgba(255,120,90,0.0)"/>
+    <stop offset="88%" stop-color="rgba(255,150,110,0.35)"/>
     <stop offset="100%" stop-color="rgba(255,160,120,0.55)"/>
   </radialGradient>
-  <!-- Handle wood -->
   <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%"   stop-color="#c8843a"/>
-    <stop offset="12%"  stop-color="#e8a050"/>
-    <stop offset="30%"  stop-color="#f0b060"/>
-    <stop offset="50%"  stop-color="#e8a840"/>
-    <stop offset="68%"  stop-color="#c87828"/>
-    <stop offset="85%"  stop-color="#b06020"/>
+    <stop offset="0%" stop-color="#c8843a"/>
+    <stop offset="12%" stop-color="#e8a050"/>
+    <stop offset="30%" stop-color="#f0b060"/>
+    <stop offset="50%" stop-color="#e8a840"/>
+    <stop offset="68%" stop-color="#c87828"/>
+    <stop offset="85%" stop-color="#b06020"/>
     <stop offset="100%" stop-color="#d08030"/>
   </linearGradient>
-  <!-- Handle highlight -->
   <linearGradient id="woodHL" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%"   stop-color="rgba(255,230,180,0.0)"/>
-    <stop offset="20%"  stop-color="rgba(255,240,200,0.35)"/>
-    <stop offset="48%"  stop-color="rgba(255,255,220,0.5)"/>
-    <stop offset="75%"  stop-color="rgba(255,230,180,0.15)"/>
+    <stop offset="0%" stop-color="rgba(255,230,180,0.0)"/>
+    <stop offset="20%" stop-color="rgba(255,240,200,0.35)"/>
+    <stop offset="48%" stop-color="rgba(255,255,220,0.5)"/>
+    <stop offset="75%" stop-color="rgba(255,230,180,0.15)"/>
     <stop offset="100%" stop-color="rgba(0,0,0,0.0)"/>
   </linearGradient>
-  <!-- Ferrule / metal collar -->
   <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%"   stop-color="#707070"/>
-    <stop offset="18%"  stop-color="#c0c0c0"/>
-    <stop offset="40%"  stop-color="#e8e8e8"/>
-    <stop offset="58%"  stop-color="#b0b0b0"/>
-    <stop offset="78%"  stop-color="#606060"/>
+    <stop offset="0%" stop-color="#707070"/>
+    <stop offset="18%" stop-color="#c0c0c0"/>
+    <stop offset="40%" stop-color="#e8e8e8"/>
+    <stop offset="58%" stop-color="#b0b0b0"/>
+    <stop offset="78%" stop-color="#606060"/>
     <stop offset="100%" stop-color="#808080"/>
   </linearGradient>
-  <!-- Handle end knob -->
   <radialGradient id="knob" cx="40%" cy="35%" r="65%">
-    <stop offset="0%"   stop-color="#f0b060"/>
-    <stop offset="55%"  stop-color="#c07828"/>
+    <stop offset="0%" stop-color="#f0b060"/>
+    <stop offset="55%" stop-color="#c07828"/>
     <stop offset="100%" stop-color="#804010"/>
   </radialGradient>
-  <!-- Drop shadow -->
   <filter id="shadow" x="-20%" y="-8%" width="140%" height="116%">
-    <feDropShadow dx="0" dy="5" stdDeviation="8"
-      flood-color="rgba(0,0,0,0.6)"/>
+    <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="rgba(0,0,0,0.6)"/>
   </filter>
   <filter id="softShadow" x="-30%" y="-10%" width="160%" height="130%">
-    <feDropShadow dx="2" dy="4" stdDeviation="5"
-      flood-color="rgba(0,0,0,0.45)"/>
+    <feDropShadow dx="2" dy="4" stdDeviation="5" flood-color="rgba(0,0,0,0.45)"/>
   </filter>
 </defs>
-
-<!-- ── AO shadow under cup ── -->
-<ellipse cx="100" cy="158" rx="72" ry="14"
-  fill="rgba(0,0,0,0.32)" filter="url(#softShadow)"/>
-
-<!-- ── RUBBER CUP BODY ── -->
-<!-- Main dome of the cup -->
-<ellipse cx="100" cy="108" rx="72" ry="106"
-  fill="url(#cup)" filter="url(#shadow)"/>
-
-<!-- Fold ring 1 — outer crease -->
-<ellipse cx="100" cy="148" rx="68" ry="18"
-  fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="3.5"/>
-<ellipse cx="100" cy="148" rx="68" ry="18"
-  fill="none" stroke="rgba(180,60,40,0.3)" stroke-width="1.5"/>
-
-<!-- Fold ring 2 -->
-<ellipse cx="100" cy="128" rx="58" ry="14"
-  fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.8"/>
-
-<!-- Fold ring 3 -->
-<ellipse cx="100" cy="112" rx="46" ry="10"
-  fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="2.2"/>
-
-<!-- Fold ring 4 — tight near top -->
-<ellipse cx="100" cy="80" rx="30" ry="6"
-  fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.8"/>
-
-<!-- Cup rim highlight overlay -->
-<ellipse cx="100" cy="108" rx="72" ry="106"
-  fill="url(#cupRim)"/>
-
-<!-- Top specular highlight on cup dome -->
-<ellipse cx="82" cy="52" rx="22" ry="32"
-  fill="rgba(255,160,130,0.28)" transform="rotate(-15,82,52)"/>
-<ellipse cx="78" cy="44" rx="10" ry="16"
-  fill="rgba(255,200,180,0.22)" transform="rotate(-15,78,44)"/>
-
-<!-- Cup opening rim (dark ellipse at bottom of cup) -->
-<ellipse cx="100" cy="155" rx="66" ry="12"
-  fill="rgba(30,5,2,0.75)"/>
-<ellipse cx="100" cy="155" rx="60" ry="8"
-  fill="rgba(15,2,1,0.85)"/>
-
-<!-- ── FERRULE (metal collar connecting cup to handle) ── -->
-<rect x="82" y="155" width="36" height="28" rx="4"
-  fill="url(#metal)" filter="url(#softShadow)"/>
-<!-- ferrule groove lines -->
-<rect x="82" y="163" width="36" height="3" rx="0"
-  fill="rgba(0,0,0,0.3)"/>
-<rect x="82" y="170" width="36" height="3" rx="0"
-  fill="rgba(0,0,0,0.22)"/>
-<!-- ferrule highlight -->
-<rect x="86" y="156" width="14" height="26" rx="2"
-  fill="rgba(255,255,255,0.18)"/>
-
-<!-- ── WOODEN HANDLE ── -->
-<!-- Main shaft -->
-<rect x="88" y="180" width="24" height="290" rx="5"
-  fill="url(#wood)" filter="url(#softShadow)"/>
-<!-- Handle highlight / sheen -->
-<rect x="88" y="180" width="24" height="290" rx="5"
-  fill="url(#woodHL)"/>
-<!-- Wood grain lines -->
-<line x1="93"  y1="185" x2="93"  y2="465" stroke="rgba(0,0,0,0.09)" stroke-width="1.1"/>
-<line x1="98"  y1="183" x2="98"  y2="467" stroke="rgba(160,80,20,0.08)" stroke-width="0.9"/>
+<ellipse cx="100" cy="158" rx="72" ry="14" fill="rgba(0,0,0,0.32)" filter="url(#softShadow)"/>
+<ellipse cx="100" cy="108" rx="72" ry="106" fill="url(#cup)" filter="url(#shadow)"/>
+<ellipse cx="100" cy="148" rx="68" ry="18" fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="3.5"/>
+<ellipse cx="100" cy="148" rx="68" ry="18" fill="none" stroke="rgba(180,60,40,0.3)" stroke-width="1.5"/>
+<ellipse cx="100" cy="128" rx="58" ry="14" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.8"/>
+<ellipse cx="100" cy="112" rx="46" ry="10" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="2.2"/>
+<ellipse cx="100" cy="80" rx="30" ry="6" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.8"/>
+<ellipse cx="100" cy="108" rx="72" ry="106" fill="url(#cupRim)"/>
+<ellipse cx="82" cy="52" rx="22" ry="32" fill="rgba(255,160,130,0.28)" transform="rotate(-15,82,52)"/>
+<ellipse cx="78" cy="44" rx="10" ry="16" fill="rgba(255,200,180,0.22)" transform="rotate(-15,78,44)"/>
+<ellipse cx="100" cy="155" rx="66" ry="12" fill="rgba(30,5,2,0.75)"/>
+<ellipse cx="100" cy="155" rx="60" ry="8" fill="rgba(15,2,1,0.85)"/>
+<rect x="82" y="155" width="36" height="28" rx="4" fill="url(#metal)" filter="url(#softShadow)"/>
+<rect x="82" y="163" width="36" height="3" rx="0" fill="rgba(0,0,0,0.3)"/>
+<rect x="82" y="170" width="36" height="3" rx="0" fill="rgba(0,0,0,0.22)"/>
+<rect x="86" y="156" width="14" height="26" rx="2" fill="rgba(255,255,255,0.18)"/>
+<rect x="88" y="180" width="24" height="290" rx="5" fill="url(#wood)" filter="url(#softShadow)"/>
+<rect x="88" y="180" width="24" height="290" rx="5" fill="url(#woodHL)"/>
+<line x1="93" y1="185" x2="93" y2="465" stroke="rgba(0,0,0,0.09)" stroke-width="1.1"/>
+<line x1="98" y1="183" x2="98" y2="467" stroke="rgba(160,80,20,0.08)" stroke-width="0.9"/>
 <line x1="104" y1="183" x2="104" y2="467" stroke="rgba(0,0,0,0.07)" stroke-width="0.8"/>
 <line x1="110" y1="185" x2="110" y2="465" stroke="rgba(160,80,20,0.07)" stroke-width="0.9"/>
-
-<!-- ── END KNOB ── -->
-<ellipse cx="100" cy="468" rx="16" ry="14"
-  fill="url(#knob)" filter="url(#softShadow)"/>
-<!-- knob highlight -->
-<ellipse cx="94" cy="462" rx="6" ry="5"
-  fill="rgba(255,210,150,0.4)"/>
-<!-- knob base ring -->
-<ellipse cx="100" cy="475" rx="14" ry="5"
-  fill="rgba(0,0,0,0.4)"/>
-
+<ellipse cx="100" cy="468" rx="16" ry="14" fill="url(#knob)" filter="url(#softShadow)"/>
+<ellipse cx="94" cy="462" rx="6" ry="5" fill="rgba(255,210,150,0.4)"/>
+<ellipse cx="100" cy="475" rx="14" ry="5" fill="rgba(0,0,0,0.4)"/>
 </svg>`;
 
-/* ===================================================================
-   RUNTIME
-=================================================================== */
 const $cam    = document.getElementById('camera');
 const $start  = document.getElementById('start-screen');
 const $errEl  = document.getElementById('start-error');
@@ -357,15 +240,10 @@ const $img    = document.getElementById('plunger-img');
 const $ring   = document.getElementById('suction-ring');
 
 let cameraReady = false;
-let state       = 'idle';   // idle | windup | flying | stuck | resetting
+let state       = 'idle';
 let lastThrow   = 0;
-
-// Cached rest-pose geometry (recalculated on resize)
 let REST = { left:0, top:0, w:0, h:0 };
 
-/* ===================================================================
-   FALLBACK SVG
-=================================================================== */
 function useFallback() {
   const blob = new Blob([FALLBACK_SVG], { type: 'image/svg+xml' });
   $img.src   = URL.createObjectURL(blob);
@@ -374,9 +252,6 @@ function useFallback() {
 $img.src = PLUNGER_SRC;
 $img.addEventListener('load', layoutRest);
 
-/* ===================================================================
-   LAYOUT — rest position geometry
-=================================================================== */
 function getSafeAreaBottom() {
   const p = document.createElement('div');
   p.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden;';
@@ -393,7 +268,7 @@ function layoutRest() {
 
   const ratio = ($img.naturalWidth && $img.naturalHeight)
     ? $img.naturalHeight / $img.naturalWidth
-    : 520 / 200;   // SVG aspect
+    : 520 / 200;
 
   const w = vw * (PLUNGER_WIDTH_VW / 100);
   const h = w * ratio;
@@ -434,11 +309,6 @@ function applyRest(animate) {
 window.addEventListener('resize', layoutRest);
 window.addEventListener('orientationchange', () => setTimeout(layoutRest, 340));
 
-/* ===================================================================
-   THROW STATE MACHINE
-   ─────────────────────────────────────────────────────────────────
-   idle → windup → flying → squash → stuck → resetting → idle
-=================================================================== */
 function startThrow(tapX, tapY) {
   const now = performance.now();
   if (state !== 'idle' || now - lastThrow < MIN_THROW_MS) return;
@@ -448,87 +318,61 @@ function startThrow(tapX, tapY) {
   if (navigator.vibrate) navigator.vibrate(20);
   spawnRipple(tapX, tapY);
 
-  // ── Compute world coords of start and end ──────────────────────
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // Plunger cup tip (top of image at rest, before rotation)
-  // transform-origin is at 50% 18%, so cup tip ≈ that point
   const startX = REST.left + REST.w * 0.50;
   const startY = REST.top  + REST.h * 0.18;
 
   const endX = vw * (TARGET_X_VW / 100);
   const endY = vh * (TARGET_Y_VH / 100);
 
-  // Translation needed to move the transform-origin to the target
   const dX = endX - startX;
   const dY = endY - startY;
 
-  // ── Phase 1: Wind-up ──────────────────────────────────────────
   $wrap.style.transformOrigin = '50% 18%';
-  $wrap.style.transition =
-    `transform ${WINDUP_MS}ms cubic-bezier(0.4,0,0.6,1)`;
-  $wrap.style.transform =
-    `rotate(${REST_ROT_DEG + 10}deg) translate(0px, 26px) scale(1.05)`;
+  $wrap.style.transition = `transform ${WINDUP_MS}ms cubic-bezier(0.4,0,0.6,1)`;
+  $wrap.style.transform = `rotate(${REST_ROT_DEG + 10}deg) translate(0px, 26px) scale(1.05)`;
 
-  // ── Phase 2: Flight ───────────────────────────────────────────
   setTimeout(() => {
     state = 'flying';
 
-    // Wobble: brief mid-air rotation deviation
     const wobble = WOBBLE_DEG;
-    const midRot = REST_ROT_DEG - wobble;   // slight counter-rotate mid-air
+    const midRot = REST_ROT_DEG - wobble;
 
-    // Two-step flight for wobble feel: first half rotates one way,
-    // second half corrects to ~0 (cup facing forward at target).
-    // We achieve this with a keyframe approach using a CSS animation
-    // injected directly on the element.
     const flyId = `fly_${Date.now()}`;
     const styleEl = document.createElement('style');
     styleEl.id = flyId;
     styleEl.textContent = `
       @keyframes plunger_fly {
-        0%   { transform: translate(0px,       0px)       rotate(${REST_ROT_DEG}deg) scale(1); }
-        45%  { transform: translate(${dX*0.48}px, ${dY*0.48}px) rotate(${midRot}deg)        scale(${1 - (1-THROW_END_SCALE)*0.45}); }
-        100% { transform: translate(${dX}px,   ${dY}px)   rotate(-90deg)              scale(${THROW_END_SCALE}); }
+        0%   { transform: translate(0px, 0px) rotate(${REST_ROT_DEG}deg) scale(1); }
+        45%  { transform: translate(${dX*0.48}px, ${dY*0.48}px) rotate(${midRot}deg) scale(${1 - (1-THROW_END_SCALE)*0.45}); }
+        100% { transform: translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE}); }
       }
     `;
     document.head.appendChild(styleEl);
 
     $wrap.style.transition = 'none';
-    $wrap.style.animation  =
-      `plunger_fly ${THROW_DURATION_MS}ms cubic-bezier(0.3,0.6,0.5,1) forwards`;
+    $wrap.style.animation  = `plunger_fly ${THROW_DURATION_MS}ms cubic-bezier(0.3,0.6,0.5,1) forwards`;
 
-    // ── Phase 3: Impact squash ────────────────────────────────────
     setTimeout(() => {
       state = 'stuck';
       document.head.removeChild(styleEl);
 
-      // Lock position at target — remove animation, apply final transform
       $wrap.style.animation = 'none';
-      $wrap.style.transform =
-        `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
+      $wrap.style.transform = `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
 
-      // Squash: cup compresses horizontally, expands vertically
       void $wrap.offsetWidth;
-      $wrap.style.transition =
-        `transform ${SQUASH_MS}ms cubic-bezier(0.2,0.8,0.4,1)`;
+      $wrap.style.transition = `transform ${SQUASH_MS}ms cubic-bezier(0.2,0.8,0.4,1)`;
       $wrap.style.transform =
-        `translate(${dX}px, ${dY}px) rotate(-90deg)
-         scale(${THROW_END_SCALE})
-         scaleX(${SQUASH_X}) scaleY(${SQUASH_Y})`;
+        `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE}) scaleX(${SQUASH_X}) scaleY(${SQUASH_Y})`;
 
-      // Fire suction ring
       showSuctionRing(endX, endY);
 
-      // Settle: relax back to natural shape (stuck)
       setTimeout(() => {
-        $wrap.style.transition =
-          `transform ${SETTLE_MS}ms cubic-bezier(0.34,1.3,0.64,1)`;
-        $wrap.style.transform =
-          `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
+        $wrap.style.transition = `transform ${SETTLE_MS}ms cubic-bezier(0.34,1.3,0.64,1)`;
+        $wrap.style.transform = `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
 
-        // ── Phase 4: Reset ────────────────────────────────────────
         setTimeout(() => {
           state = 'resetting';
           $wrap.style.transition = 'opacity 0.18s ease';
@@ -537,8 +381,7 @@ function startThrow(tapX, tapY) {
           setTimeout(() => {
             applyRest(false);
             void $wrap.offsetWidth;
-            $wrap.style.transition =
-              'transform 0.26s cubic-bezier(0.34,1.4,0.64,1), opacity 0.22s ease';
+            $wrap.style.transition = 'transform 0.26s cubic-bezier(0.34,1.4,0.64,1), opacity 0.22s ease';
             $wrap.style.opacity = '1';
             setTimeout(() => { state = 'idle'; }, 300);
           }, RESET_DELAY_MS);
@@ -552,9 +395,6 @@ function startThrow(tapX, tapY) {
   }, WINDUP_MS);
 }
 
-/* ===================================================================
-   SUCTION RING ANIMATION
-=================================================================== */
 function showSuctionRing(x, y) {
   $ring.style.transition = 'none';
   $ring.style.left       = x + 'px';
@@ -563,24 +403,18 @@ function showSuctionRing(x, y) {
   $ring.style.transform  = 'translate(-50%,-50%) scale(0.15)';
   void $ring.offsetWidth;
 
-  // Burst out
   $ring.style.transition =
     'transform 0.18s cubic-bezier(0.2,0.8,0.4,1), opacity 0.12s ease-out';
   $ring.style.opacity   = '1';
   $ring.style.transform = 'translate(-50%,-50%) scale(1)';
 
-  // Hold then fade
   setTimeout(() => {
-    $ring.style.transition =
-      'transform 0.55s ease-out, opacity 0.55s ease-out';
+    $ring.style.transition = 'transform 0.55s ease-out, opacity 0.55s ease-out';
     $ring.style.opacity   = '0';
     $ring.style.transform = 'translate(-50%,-50%) scale(1.7)';
   }, 180);
 }
 
-/* ===================================================================
-   TAP RIPPLE
-=================================================================== */
 function spawnRipple(x, y) {
   const el = document.createElement('div');
   el.className = 'tap-ripple';
@@ -590,9 +424,6 @@ function spawnRipple(x, y) {
   setTimeout(() => el.remove(), 480);
 }
 
-/* ===================================================================
-   CAMERA
-=================================================================== */
 async function startCamera() {
   if (cameraReady) return;
 
@@ -608,8 +439,7 @@ async function startCamera() {
 
   try {
     await tryStart({
-      video: { facingMode: { exact: 'environment' },
-               width: { ideal: 1920 }, height: { ideal: 1080 } },
+      video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false
     });
   } catch {
@@ -622,9 +452,6 @@ async function startCamera() {
   }
 }
 
-/* ===================================================================
-   INPUT
-=================================================================== */
 document.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   if (!cameraReady) { startCamera(); return; }
@@ -633,9 +460,6 @@ document.addEventListener('pointerdown', (e) => {
 
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-/* ===================================================================
-   INIT
-=================================================================== */
 layoutRest();
 </script>
 </body>
