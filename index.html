@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Plunger Throw</title>
+<title>Rainbow Throw</title>
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -46,15 +46,16 @@
     will-change: transform, filter;
   }
 
+  /* Suction ring — rainbow tint to match the object */
   #suction-ring {
     position: fixed;
     z-index: 19;
     pointer-events: none;
     border-radius: 50%;
-    border: 3px solid rgba(180, 220, 255, 0.75);
+    border: 3px solid rgba(220, 180, 255, 0.85);
     box-shadow:
-      0 0 12px 4px rgba(120, 190, 255, 0.45),
-      inset 0 0 8px 2px rgba(120, 190, 255, 0.25);
+      0 0 14px 5px rgba(200, 150, 255, 0.5),
+      inset 0 0 8px 2px rgba(180, 220, 255, 0.3);
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.2);
     width: 80px; height: 80px;
@@ -64,7 +65,7 @@
     position: fixed; z-index: 30;
     pointer-events: none;
     border-radius: 50%;
-    border: 2px solid rgba(200, 230, 255, 0.65);
+    border: 2px solid rgba(220, 200, 255, 0.65);
     width: 10px; height: 10px;
     transform: translate(-50%, -50%) scale(1);
     animation: ripple 0.42s cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
@@ -88,8 +89,8 @@
     animation: bob 2s ease-in-out infinite;
   }
   @keyframes bob {
-    0%, 100% { transform: translateY(0) rotate(-6deg); }
-    50% { transform: translateY(-10px) rotate(6deg); }
+    0%, 100% { transform: translateY(0)     rotate(-6deg); }
+    50%       { transform: translateY(-10px) rotate(6deg);  }
   }
   #start-label {
     font-family: Georgia, 'Times New Roman', serif;
@@ -116,122 +117,75 @@
 <div id="suction-ring"></div>
 
 <div id="plunger-wrap">
-  <img id="plunger-img" alt="" draggable="false" onerror="useFallback()">
+  <img id="plunger-img" src="banana.png" alt="" draggable="false">
 </div>
 
 <div id="start-screen">
-  <div id="start-icon">🪠</div>
+  <div id="start-icon">🌈</div>
   <div id="start-label">Tap to Throw</div>
-  <div id="start-sub">plunger throw</div>
+  <div id="start-sub">rainbow throw</div>
   <div id="start-error"></div>
 </div>
 
 <script>
+/* ===================================================================
+   ████  TUNING CONSTANTS  ████
+   Tuned for banana.png — a wide, diagonal, spiral object.
+   The image is roughly landscape, tip pointing upper-left.
+=================================================================== */
+
+// ── Image source ─────────────────────────────────────────────────
 const PLUNGER_SRC = 'banana.png';
 
-/* updated values */
-const PLUNGER_WIDTH_VW = 26;
-const REST_BOTTOM_VH   = -8;
-const REST_OFFSET_VW   = 6;
-const REST_ROT_DEG     = -82;
+// ── Object size at rest ──────────────────────────────────────────
+// Wider than plunger since this is a horizontal-ish object.
+const PLUNGER_WIDTH_VW = 72;
 
-const TARGET_X_VW      = 50;
-const TARGET_Y_VH      = 18;
+// ── Rest position ─────────────────────────────────────────────────
+// Bottom-center, partially off-screen so it feels "held."
+const REST_BOTTOM_VH  = -10;   // vh from bottom (neg = more off-screen)
+const REST_OFFSET_VW  = 4;     // slight nudge right of center
 
-const THROW_DURATION_MS  = 520;
-const WINDUP_MS          = 85;
+// ── Rest rotation ─────────────────────────────────────────────────
+// Object naturally runs diagonally — tip toward upper-left.
+// ~-35deg mirrors how you'd hold it aimed forward.
+const REST_ROT_DEG    = -35;
 
-const THROW_END_SCALE    = 0.22;
+// ── Throw target (where it sticks) ────────────────────────────────
+// Upper-center of screen — feels like "straight ahead."
+const TARGET_X_VW     = 50;   // % from left
+const TARGET_Y_VH     = 30;   // % from top
 
-const WOBBLE_DEG         = 12;
+// ── Throw timing ─────────────────────────────────────────────────
+const THROW_DURATION_MS = 400;
+const WINDUP_MS         = 80;
 
-const SQUASH_X           = 1.22;
-const SQUASH_Y           = 0.72;
-const SQUASH_MS          = 80;
-const SETTLE_MS          = 160;
+// ── Perspective shrink during flight ──────────────────────────────
+// Doesn't shrink as aggressively as a long plunger — wider object
+// stays more visible as it recedes.
+const THROW_END_SCALE   = 0.62;
 
-const STICK_DURATION_MS  = 900;
-const RESET_DELAY_MS     = 200;
-const MIN_THROW_MS       = 700;
+// ── Wobble during flight ──────────────────────────────────────────
+// Slight tumble — a spiraling object has natural wobble.
+const WOBBLE_DEG        = 18;
 
-const FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 200 520" width="200" height="520">
-<defs>
-  <radialGradient id="cup" cx="42%" cy="38%" r="62%">
-    <stop offset="0%" stop-color="#cc3322"/>
-    <stop offset="30%" stop-color="#a02015"/>
-    <stop offset="65%" stop-color="#7a1208"/>
-    <stop offset="100%" stop-color="#3d0804"/>
-  </radialGradient>
-  <radialGradient id="cupRim" cx="50%" cy="50%" r="50%">
-    <stop offset="0%" stop-color="rgba(255,120,90,0.0)"/>
-    <stop offset="72%" stop-color="rgba(255,120,90,0.0)"/>
-    <stop offset="88%" stop-color="rgba(255,150,110,0.35)"/>
-    <stop offset="100%" stop-color="rgba(255,160,120,0.55)"/>
-  </radialGradient>
-  <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%" stop-color="#c8843a"/>
-    <stop offset="12%" stop-color="#e8a050"/>
-    <stop offset="30%" stop-color="#f0b060"/>
-    <stop offset="50%" stop-color="#e8a840"/>
-    <stop offset="68%" stop-color="#c87828"/>
-    <stop offset="85%" stop-color="#b06020"/>
-    <stop offset="100%" stop-color="#d08030"/>
-  </linearGradient>
-  <linearGradient id="woodHL" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%" stop-color="rgba(255,230,180,0.0)"/>
-    <stop offset="20%" stop-color="rgba(255,240,200,0.35)"/>
-    <stop offset="48%" stop-color="rgba(255,255,220,0.5)"/>
-    <stop offset="75%" stop-color="rgba(255,230,180,0.15)"/>
-    <stop offset="100%" stop-color="rgba(0,0,0,0.0)"/>
-  </linearGradient>
-  <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%" stop-color="#707070"/>
-    <stop offset="18%" stop-color="#c0c0c0"/>
-    <stop offset="40%" stop-color="#e8e8e8"/>
-    <stop offset="58%" stop-color="#b0b0b0"/>
-    <stop offset="78%" stop-color="#606060"/>
-    <stop offset="100%" stop-color="#808080"/>
-  </linearGradient>
-  <radialGradient id="knob" cx="40%" cy="35%" r="65%">
-    <stop offset="0%" stop-color="#f0b060"/>
-    <stop offset="55%" stop-color="#c07828"/>
-    <stop offset="100%" stop-color="#804010"/>
-  </radialGradient>
-  <filter id="shadow" x="-20%" y="-8%" width="140%" height="116%">
-    <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="rgba(0,0,0,0.6)"/>
-  </filter>
-  <filter id="softShadow" x="-30%" y="-10%" width="160%" height="130%">
-    <feDropShadow dx="2" dy="4" stdDeviation="5" flood-color="rgba(0,0,0,0.45)"/>
-  </filter>
-</defs>
-<ellipse cx="100" cy="158" rx="72" ry="14" fill="rgba(0,0,0,0.32)" filter="url(#softShadow)"/>
-<ellipse cx="100" cy="108" rx="72" ry="106" fill="url(#cup)" filter="url(#shadow)"/>
-<ellipse cx="100" cy="148" rx="68" ry="18" fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="3.5"/>
-<ellipse cx="100" cy="148" rx="68" ry="18" fill="none" stroke="rgba(180,60,40,0.3)" stroke-width="1.5"/>
-<ellipse cx="100" cy="128" rx="58" ry="14" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.8"/>
-<ellipse cx="100" cy="112" rx="46" ry="10" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="2.2"/>
-<ellipse cx="100" cy="80" rx="30" ry="6" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.8"/>
-<ellipse cx="100" cy="108" rx="72" ry="106" fill="url(#cupRim)"/>
-<ellipse cx="82" cy="52" rx="22" ry="32" fill="rgba(255,160,130,0.28)" transform="rotate(-15,82,52)"/>
-<ellipse cx="78" cy="44" rx="10" ry="16" fill="rgba(255,200,180,0.22)" transform="rotate(-15,78,44)"/>
-<ellipse cx="100" cy="155" rx="66" ry="12" fill="rgba(30,5,2,0.75)"/>
-<ellipse cx="100" cy="155" rx="60" ry="8" fill="rgba(15,2,1,0.85)"/>
-<rect x="82" y="155" width="36" height="28" rx="4" fill="url(#metal)" filter="url(#softShadow)"/>
-<rect x="82" y="163" width="36" height="3" rx="0" fill="rgba(0,0,0,0.3)"/>
-<rect x="82" y="170" width="36" height="3" rx="0" fill="rgba(0,0,0,0.22)"/>
-<rect x="86" y="156" width="14" height="26" rx="2" fill="rgba(255,255,255,0.18)"/>
-<rect x="88" y="180" width="24" height="290" rx="5" fill="url(#wood)" filter="url(#softShadow)"/>
-<rect x="88" y="180" width="24" height="290" rx="5" fill="url(#woodHL)"/>
-<line x1="93" y1="185" x2="93" y2="465" stroke="rgba(0,0,0,0.09)" stroke-width="1.1"/>
-<line x1="98" y1="183" x2="98" y2="467" stroke="rgba(160,80,20,0.08)" stroke-width="0.9"/>
-<line x1="104" y1="183" x2="104" y2="467" stroke="rgba(0,0,0,0.07)" stroke-width="0.8"/>
-<line x1="110" y1="185" x2="110" y2="465" stroke="rgba(160,80,20,0.07)" stroke-width="0.9"/>
-<ellipse cx="100" cy="468" rx="16" ry="14" fill="url(#knob)" filter="url(#softShadow)"/>
-<ellipse cx="94" cy="462" rx="6" ry="5" fill="rgba(255,210,150,0.4)"/>
-<ellipse cx="100" cy="475" rx="14" ry="5" fill="rgba(0,0,0,0.4)"/>
-</svg>`;
+// ── Impact squash ─────────────────────────────────────────────────
+// Cup-end is the suction base — squash wide, compress height.
+const SQUASH_X          = 1.18;
+const SQUASH_Y          = 0.78;
+const SQUASH_MS         = 75;
+const SETTLE_MS         = 155;
 
+// ── Stick & reset timing ─────────────────────────────────────────
+const STICK_DURATION_MS = 900;
+const RESET_DELAY_MS    = 200;
+
+// ── Fire rate throttle ────────────────────────────────────────────
+const MIN_THROW_MS      = 700;
+
+/* ===================================================================
+   RUNTIME
+=================================================================== */
 const $cam    = document.getElementById('camera');
 const $start  = document.getElementById('start-screen');
 const $errEl  = document.getElementById('start-error');
@@ -242,16 +196,13 @@ const $ring   = document.getElementById('suction-ring');
 let cameraReady = false;
 let state       = 'idle';
 let lastThrow   = 0;
-let REST = { left:0, top:0, w:0, h:0 };
+let REST        = { left:0, top:0, w:0, h:0, cx:0, cy:0 };
 
-function useFallback() {
-  const blob = new Blob([FALLBACK_SVG], { type: 'image/svg+xml' });
-  $img.src   = URL.createObjectURL(blob);
-}
-
-$img.src = PLUNGER_SRC;
 $img.addEventListener('load', layoutRest);
 
+/* ===================================================================
+   LAYOUT
+=================================================================== */
 function getSafeAreaBottom() {
   const p = document.createElement('div');
   p.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden;';
@@ -266,21 +217,21 @@ function layoutRest() {
   const vh  = window.innerHeight;
   const sab = getSafeAreaBottom();
 
+  // Use natural image ratio; fallback to rough ratio of the rainbow object
   const ratio = ($img.naturalWidth && $img.naturalHeight)
     ? $img.naturalHeight / $img.naturalWidth
-    : 520 / 200;
+    : 0.55;   // banana.png is wider than tall
 
   const w = vw * (PLUNGER_WIDTH_VW / 100);
   const h = w * ratio;
 
-  const cx         = vw * 0.5 + vw * (REST_OFFSET_VW / 100);
-  const bottomOff  = vh * (REST_BOTTOM_VH / 100);
+  const cx        = vw * 0.5 + vw * (REST_OFFSET_VW / 100);
+  const bottomOff = vh * (REST_BOTTOM_VH / 100);
 
   REST = {
     left: cx - w / 2,
     top:  vh - h - bottomOff - sab,
-    w, h,
-    cx,
+    w, h, cx,
     cy: vh - h / 2 - bottomOff - sab
   };
 
@@ -288,6 +239,10 @@ function layoutRest() {
 }
 
 function applyRest(animate) {
+  // transform-origin at the suction base end of this object.
+  // The object's "business end" (suction cup / base ring) is
+  // at the RIGHT side of the image based on the upload, so
+  // origin at ~82% 55% keeps the base as the pivot.
   $wrap.style.cssText = `
     position: fixed;
     left:   ${REST.left}px;
@@ -297,7 +252,7 @@ function applyRest(animate) {
     z-index: 20;
     pointer-events: none;
     will-change: transform, opacity;
-    transform-origin: 50% 18%;
+    transform-origin: 82% 55%;
     transform: rotate(${REST_ROT_DEG}deg) scale(1);
     opacity: 1;
     ${animate
@@ -309,6 +264,9 @@ function applyRest(animate) {
 window.addEventListener('resize', layoutRest);
 window.addEventListener('orientationchange', () => setTimeout(layoutRest, 340));
 
+/* ===================================================================
+   THROW
+=================================================================== */
 function startThrow(tapX, tapY) {
   const now = performance.now();
   if (state !== 'idle' || now - lastThrow < MIN_THROW_MS) return;
@@ -321,58 +279,75 @@ function startThrow(tapX, tapY) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  const startX = REST.left + REST.w * 0.50;
-  const startY = REST.top  + REST.h * 0.18;
+  // Transform-origin (pivot) world position at rest
+  const pivotX = REST.left + REST.w * 0.82;
+  const pivotY = REST.top  + REST.h * 0.55;
 
   const endX = vw * (TARGET_X_VW / 100);
   const endY = vh * (TARGET_Y_VH / 100);
 
-  const dX = endX - startX;
-  const dY = endY - startY;
+  const dX = endX - pivotX;
+  const dY = endY - pivotY;
 
-  $wrap.style.transformOrigin = '50% 18%';
-  $wrap.style.transition = `transform ${WINDUP_MS}ms cubic-bezier(0.4,0,0.6,1)`;
-  $wrap.style.transform = `rotate(${REST_ROT_DEG + 10}deg) translate(0px, 26px) scale(1.05)`;
+  // ── Wind-up: pull back and down ───────────────────────────────
+  $wrap.style.transformOrigin = '82% 55%';
+  $wrap.style.transition =
+    `transform ${WINDUP_MS}ms cubic-bezier(0.4,0,0.6,1)`;
+  $wrap.style.transform =
+    `rotate(${REST_ROT_DEG + 12}deg) translate(0px, 24px) scale(1.05)`;
 
+  // ── Flight ────────────────────────────────────────────────────
   setTimeout(() => {
     state = 'flying';
 
-    const wobble = WOBBLE_DEG;
-    const midRot = REST_ROT_DEG - wobble;
+    // For this spiral object, rotate toward ~0deg at target so
+    // the tip points straight at the viewer when it sticks.
+    const midRot = REST_ROT_DEG - WOBBLE_DEG;
+    const endRot = -20;  // slightly tilted at rest on surface
 
-    const flyId = `fly_${Date.now()}`;
+    const flyId   = `fly_${Date.now()}`;
     const styleEl = document.createElement('style');
-    styleEl.id = flyId;
+    styleEl.id    = flyId;
     styleEl.textContent = `
-      @keyframes plunger_fly {
-        0%   { transform: translate(0px, 0px) rotate(${REST_ROT_DEG}deg) scale(1); }
-        45%  { transform: translate(${dX*0.48}px, ${dY*0.48}px) rotate(${midRot}deg) scale(${1 - (1-THROW_END_SCALE)*0.45}); }
-        100% { transform: translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE}); }
+      @keyframes obj_fly {
+        0%   { transform: translate(0px,          0px)          rotate(${REST_ROT_DEG}deg) scale(1); }
+        40%  { transform: translate(${dX*0.42}px, ${dY*0.42}px) rotate(${midRot}deg)       scale(${1-(1-THROW_END_SCALE)*0.38}); }
+        100% { transform: translate(${dX}px,      ${dY}px)      rotate(${endRot}deg)       scale(${THROW_END_SCALE}); }
       }
     `;
     document.head.appendChild(styleEl);
 
     $wrap.style.transition = 'none';
-    $wrap.style.animation  = `plunger_fly ${THROW_DURATION_MS}ms cubic-bezier(0.3,0.6,0.5,1) forwards`;
+    $wrap.style.animation  =
+      `obj_fly ${THROW_DURATION_MS}ms cubic-bezier(0.28,0.65,0.48,1) forwards`;
 
+    // ── Impact squash ─────────────────────────────────────────
     setTimeout(() => {
       state = 'stuck';
       document.head.removeChild(styleEl);
 
       $wrap.style.animation = 'none';
-      $wrap.style.transform = `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
+      $wrap.style.transform =
+        `translate(${dX}px, ${dY}px) rotate(${endRot}deg) scale(${THROW_END_SCALE})`;
 
       void $wrap.offsetWidth;
-      $wrap.style.transition = `transform ${SQUASH_MS}ms cubic-bezier(0.2,0.8,0.4,1)`;
+      $wrap.style.transition =
+        `transform ${SQUASH_MS}ms cubic-bezier(0.2,0.8,0.4,1)`;
       $wrap.style.transform =
-        `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE}) scaleX(${SQUASH_X}) scaleY(${SQUASH_Y})`;
+        `translate(${dX}px, ${dY}px) rotate(${endRot}deg)
+         scale(${THROW_END_SCALE})
+         scaleX(${SQUASH_X}) scaleY(${SQUASH_Y})`;
 
       showSuctionRing(endX, endY);
 
+      // ── Settle ────────────────────────────────────────────
       setTimeout(() => {
-        $wrap.style.transition = `transform ${SETTLE_MS}ms cubic-bezier(0.34,1.3,0.64,1)`;
-        $wrap.style.transform = `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
+        $wrap.style.transition =
+          `transform ${SETTLE_MS}ms cubic-bezier(0.34,1.3,0.64,1)`;
+        $wrap.style.transform =
+          `translate(${dX}px, ${dY}px) rotate(${endRot}deg) scale(${THROW_END_SCALE})`;
 
+        // ── Reset ─────────────────────────────────────────
         setTimeout(() => {
           state = 'resetting';
           $wrap.style.transition = 'opacity 0.18s ease';
@@ -381,7 +356,8 @@ function startThrow(tapX, tapY) {
           setTimeout(() => {
             applyRest(false);
             void $wrap.offsetWidth;
-            $wrap.style.transition = 'transform 0.26s cubic-bezier(0.34,1.4,0.64,1), opacity 0.22s ease';
+            $wrap.style.transition =
+              'transform 0.26s cubic-bezier(0.34,1.4,0.64,1), opacity 0.22s ease';
             $wrap.style.opacity = '1';
             setTimeout(() => { state = 'idle'; }, 300);
           }, RESET_DELAY_MS);
@@ -395,6 +371,9 @@ function startThrow(tapX, tapY) {
   }, WINDUP_MS);
 }
 
+/* ===================================================================
+   SUCTION RING
+=================================================================== */
 function showSuctionRing(x, y) {
   $ring.style.transition = 'none';
   $ring.style.left       = x + 'px';
@@ -409,12 +388,16 @@ function showSuctionRing(x, y) {
   $ring.style.transform = 'translate(-50%,-50%) scale(1)';
 
   setTimeout(() => {
-    $ring.style.transition = 'transform 0.55s ease-out, opacity 0.55s ease-out';
+    $ring.style.transition =
+      'transform 0.55s ease-out, opacity 0.55s ease-out';
     $ring.style.opacity   = '0';
     $ring.style.transform = 'translate(-50%,-50%) scale(1.7)';
   }, 180);
 }
 
+/* ===================================================================
+   TAP RIPPLE
+=================================================================== */
 function spawnRipple(x, y) {
   const el = document.createElement('div');
   el.className = 'tap-ripple';
@@ -424,6 +407,9 @@ function spawnRipple(x, y) {
   setTimeout(() => el.remove(), 480);
 }
 
+/* ===================================================================
+   CAMERA
+=================================================================== */
 async function startCamera() {
   if (cameraReady) return;
 
@@ -439,12 +425,14 @@ async function startCamera() {
 
   try {
     await tryStart({
-      video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      video: { facingMode: { exact: 'environment' },
+               width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false
     });
   } catch {
-    try { await tryStart({ video: { facingMode: 'environment' }, audio: false }); }
-    catch (e) {
+    try {
+      await tryStart({ video: { facingMode: 'environment' }, audio: false });
+    } catch (e) {
       document.getElementById('start-label').textContent = 'Camera unavailable';
       $errEl.style.display = 'block';
       $errEl.textContent   = e.message;
@@ -452,6 +440,9 @@ async function startCamera() {
   }
 }
 
+/* ===================================================================
+   INPUT
+=================================================================== */
 document.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   if (!cameraReady) { startCamera(); return; }
@@ -460,6 +451,9 @@ document.addEventListener('pointerdown', (e) => {
 
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
+/* ===================================================================
+   INIT
+=================================================================== */
 layoutRest();
 </script>
 </body>
