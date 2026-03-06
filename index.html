@@ -1,53 +1,217 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{
-margin:0;
-overflow:hidden;
-background:black;
-}
-
-video{
-position:fixed;
-width:100%;
-height:100%;
-object-fit:cover;
-}
-
-#crosshair{
-position:absolute;
-top:50%;
-left:50%;
-width:40px;
-height:40px;
-border:3px solid red;
-border-radius:50%;
-transform:translate(-50%,-50%);
-}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Camera Shooter</title>
+  <style>
+    html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:-apple-system,system-ui}
+    video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+    canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}
+    #hud{position:fixed;top:14px;left:14px;color:#fff;font-weight:800;font-size:18px;text-shadow:0 2px 10px rgba(0,0,0,.7);z-index:5}
+    #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity 60ms linear;z-index:10}
+    #hint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;background:rgba(0,0,0,.55);
+          padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.2);text-align:center;z-index:20}
+  </style>
 </head>
-
 <body>
-
-<video id="camera" autoplay playsinline></video>
-<div id="crosshair"></div>
+  <video id="v" autoplay playsinline muted></video>
+  <canvas id="c"></canvas>
+  <div id="flash"></div>
+  <div id="hud">Score: <span id="score">0</span> | Hits: <span id="hits">0</span>/<span id="shots">0</span></div>
+  <div id="hint">Tap once to start.<br/>Then tap targets to shoot.</div>
 
 <script>
-const video = document.getElementById("camera");
+(() => {
+  const v = document.getElementById('v');
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d');
+  const flash = document.getElementById('flash');
+  const hint = document.getElementById('hint');
 
-navigator.mediaDevices.getUserMedia({
-video:{facingMode:"environment"}
-})
-.then(stream=>{
-video.srcObject = stream;
-});
+  const scoreEl = document.getElementById('score');
+  const hitsEl = document.getElementById('hits');
+  const shotsEl = document.getElementById('shots');
 
-document.body.addEventListener("click",()=>{
-navigator.vibrate(50);
-});
+  let started = false;
+  let score = 0, hits = 0, shots = 0;
+  let lastShot = 0;
+
+  const targets = [];
+  const spawnEveryMs = 1200;
+
+  function resize(){
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    c.width = Math.floor(innerWidth * dpr);
+    c.height = Math.floor(innerHeight * dpr);
+    c.style.width = innerWidth + 'px';
+    c.style.height = innerHeight + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  async function startCamera(){
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{ facingMode:{ ideal:"environment" } }
+    });
+    v.srcObject = stream;
+    await v.play();
+  }
+
+  // simple pew sound (no file)
+  let audioCtx;
+  function pew(){
+    try{
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audioCtx.currentTime;
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'square';
+      o.frequency.setValueAtTime(900, t);
+      o.frequency.exponentialRampToValueAtTime(220, t + 0.08);
+      g.gain.setValueAtTime(0.06, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.10);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t);
+      o.stop(t + 0.11);
+    }catch{}
+  }
+
+  function doFlash(){
+    flash.style.opacity = '0.85';
+    setTimeout(()=>flash.style.opacity='0', 70);
+  }
+
+  function spawnTarget(){
+    const r = 18 + Math.random()*16;
+    const x = r + Math.random()*(innerWidth - 2*r);
+    const y = 90 + r + Math.random()*(innerHeight*0.55);
+    targets.push({
+      x,y,r,
+      vx:(Math.random()-0.5)*0.7,
+      vy:(Math.random()-0.5)*0.5,
+      ttl: 7000 + Math.random()*5000
+    });
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,innerWidth,innerHeight);
+
+    // targets
+    for (const t of targets){
+      ctx.beginPath();
+      ctx.arc(t.x,t.y,t.r+6,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,80,80,0.22)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(t.x,t.y,t.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,80,80,0.85)';
+      ctx.fill();
+    }
+
+    // crosshair
+    const cx = innerWidth/2, cy = innerHeight/2;
+    ctx.strokeStyle='rgba(255,255,255,0.9)';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(cx,cy,16,0,Math.PI*2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx-26,cy); ctx.lineTo(cx-10,cy);
+    ctx.moveTo(cx+10,cy); ctx.lineTo(cx+26,cy);
+    ctx.moveTo(cx,cy-26); ctx.lineTo(cx,cy-10);
+    ctx.moveTo(cx,cy+10); ctx.lineTo(cx,cy+26);
+    ctx.stroke();
+  }
+
+  let lastT = performance.now();
+  function tick(t){
+    const dt = Math.min(50, t-lastT);
+    lastT = t;
+
+    // move + expire
+    for (let i=targets.length-1;i>=0;i--){
+      const trg = targets[i];
+      trg.ttl -= dt;
+      trg.x += trg.vx * dt * 0.06;
+      trg.y += trg.vy * dt * 0.06;
+
+      if (trg.x < trg.r || trg.x > innerWidth - trg.r) trg.vx *= -1;
+      if (trg.y < 80 + trg.r || trg.y > innerHeight*0.75) trg.vy *= -1;
+
+      if (trg.ttl <= 0) targets.splice(i,1);
+    }
+
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  function updateHUD(){
+    scoreEl.textContent = score;
+    hitsEl.textContent = hits;
+    shotsEl.textContent = shots;
+  }
+
+  function hitTest(x,y){
+    for (let i=targets.length-1;i>=0;i--){
+      const t = targets[i];
+      const dx = x - t.x, dy = y - t.y;
+      if (dx*dx + dy*dy <= t.r*t.r){
+        targets.splice(i,1);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function shoot(x,y){
+    const now = Date.now();
+    if (now - lastShot < 120) return; // fire rate
+    lastShot = now;
+
+    shots++;
+    pew();
+    if (navigator.vibrate) navigator.vibrate(20);
+    doFlash();
+
+    if (hitTest(x,y)){
+      hits++;
+      score += 10;
+    }
+    updateHUD();
+  }
+
+  async function start(){
+    await startCamera();
+    hint.style.display='none';
+    started = true;
+
+    // initial targets
+    for (let i=0;i<3;i++) spawnTarget();
+    setInterval(()=>spawnTarget(), spawnEveryMs);
+
+    requestAnimationFrame(tick);
+  }
+
+  // tap to start / shoot
+  c.addEventListener('pointerdown', async (ev) => {
+    const rect = c.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
+
+    try{
+      if (!started) await start();
+      shoot(x,y);
+    }catch(e){
+      hint.innerHTML = "Camera blocked.<br/>iPhone Settings → Safari → Camera → Allow, then refresh.";
+    }
+  });
+
+  updateHUD();
+})();
 </script>
-
 </body>
 </html>
