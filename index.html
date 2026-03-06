@@ -1,591 +1,593 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Rolling Pin Throw</title>
+<title>Plunger Throw</title>
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body {
-width: 100%; height: 100%;
-overflow: hidden;
-background: #000;
-touch-action: none;
-user-select: none;
--webkit-user-select: none;
-}
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #000;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
 
-/* ── LIVE CAMERA ─────────────────────────────────── */
-#camera {
-position: fixed;
-inset: 0;
-width: 100%; height: 100%;
-object-fit: cover;
-z-index: 0;
-}
+  #camera {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
 
-/* soft vignette for depth */
-#vignette {
-position: fixed; inset: 0; z-index: 1;
-pointer-events: none;
-background: radial-gradient(ellipse at 50% 46%,
-transparent 40%, rgba(0,0,0,0.52) 100%);
-}
+  #vignette {
+    position: fixed; inset: 0; z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 48%,
+      transparent 42%, rgba(0,0,0,0.48) 100%);
+  }
 
-/* ── ROLLING PIN CONTAINER ───────────────────────────
-Positioned at rest near bottom-right, as if held.
-JS rewrites this on resize and animates on throw.
-──────────────────────────────────────────────────── */
-#pin-wrap {
-position: fixed;
-z-index: 20;
-pointer-events: none;
-will-change: transform, opacity;
-transform-origin: center center;
-}
+  /* ── PLUNGER WRAPPER ─────────────────────────────────
+     JS writes left/top/width/height and all transforms.
+     transform-origin is set to the cup-end (front tip)
+     so squash/stick deformation looks physically correct.
+  ──────────────────────────────────────────────────── */
+  #plunger-wrap {
+    position: fixed;
+    z-index: 20;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
 
-/* The actual rolling pin image inside the wrapper */
-#pin-img {
-display: block;
-width: 100%;
-height: 100%;
-object-fit: contain;
-/* motion-blur stretch is applied via CSS filter in JS */
-will-change: filter, transform;
-}
+  #plunger-img {
+    display: block;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    will-change: transform, filter;
+  }
 
-/* ── HAND / GRIP SHADOW ──────────────────────────────
-A blurred dark ellipse that makes the pin look grounded
-in the player’s hand before the throw.
-──────────────────────────────────────────────────── */
-#hand-shadow {
-position: fixed;
-z-index: 19;
-pointer-events: none;
-border-radius: 50%;
-background: radial-gradient(ellipse at center,
-rgba(0,0,0,0.55) 0%, transparent 70%);
-will-change: transform, opacity;
-transform-origin: center center;
-}
+  /* ── SUCTION RING — appears on impact ───────────────
+     A concentric ring pulse that radiates out from the
+     stuck point to sell the suction-cup effect.
+  ──────────────────────────────────────────────────── */
+  #suction-ring {
+    position: fixed;
+    z-index: 19;
+    pointer-events: none;
+    border-radius: 50%;
+    border: 3px solid rgba(180, 220, 255, 0.75);
+    box-shadow:
+      0 0 12px 4px rgba(120, 190, 255, 0.45),
+      inset 0 0 8px 2px rgba(120, 190, 255, 0.25);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+    width: 80px; height: 80px;
+  }
 
-/* ── TAP RIPPLE (throw confirmation) ─────────────────
-Brief radial pulse at the tap point.
-──────────────────────────────────────────────────── */
-.tap-ripple {
-position: fixed;
-z-index: 30;
-pointer-events: none;
-border-radius: 50%;
-border: 2px solid rgba(255, 230, 180, 0.7);
-width: 10px; height: 10px;
-transform: translate(-50%, -50%) scale(1);
-animation: ripple-expand 0.45s cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
-}
-@keyframes ripple-expand {
-0%   { transform: translate(-50%,-50%) scale(1);   opacity: 0.85; }
-100% { transform: translate(-50%,-50%) scale(8);   opacity: 0;    }
-}
+  /* ── TAP RIPPLE ──────────────────────────────────── */
+  .tap-ripple {
+    position: fixed; z-index: 30;
+    pointer-events: none;
+    border-radius: 50%;
+    border: 2px solid rgba(200, 230, 255, 0.65);
+    width: 10px; height: 10px;
+    transform: translate(-50%, -50%) scale(1);
+    animation: ripple 0.42s cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+  }
+  @keyframes ripple {
+    0%   { transform: translate(-50%,-50%) scale(1); opacity: 0.8; }
+    100% { transform: translate(-50%,-50%) scale(9); opacity: 0;   }
+  }
 
-/* ── START SCREEN ────────────────────────────────── */
-#start-screen {
-position: fixed; inset: 0; z-index: 50;
-display: flex; flex-direction: column;
-align-items: center; justify-content: center;
-background: #000;
-gap: 24px;
-transition: opacity 0.55s ease;
-}
-#start-screen.hidden { opacity: 0; pointer-events: none; }
+  /* ── START SCREEN ────────────────────────────────── */
+  #start-screen {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: #000; gap: 24px;
+    transition: opacity 0.5s ease;
+  }
+  #start-screen.hidden { opacity: 0; pointer-events: none; }
 
-#start-icon {
-font-size: 68px;
-animation: bob 2.2s ease-in-out infinite;
-}
-@keyframes bob {
-0%, 100% { transform: translateY(0) rotate(-8deg); }
-50%       { transform: translateY(-10px) rotate(8deg); }
-}
-#start-label {
-font-family: Georgia, ‘Times New Roman’, serif;
-font-size: clamp(16px, 4vw, 21px);
-letter-spacing: 0.18em;
-text-transform: uppercase;
-color: rgba(255, 240, 210, 0.92);
-}
-#start-sub {
-font-family: Georgia, serif;
-font-size: 12px;
-letter-spacing: 0.14em;
-color: rgba(255, 255, 255, 0.26);
-text-transform: uppercase;
-}
-#start-error {
-font-family: ‘Courier New’, monospace;
-font-size: 11px;
-color: rgba(255, 100, 80, 0.85);
-text-align: center;
-max-width: 80vw;
-line-height: 1.6;
-display: none;
-}
+  #start-icon {
+    font-size: 64px;
+    animation: bob 2s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0)    rotate(-6deg); }
+    50%       { transform: translateY(-10px) rotate(6deg); }
+  }
+  #start-label {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(16px, 4vw, 21px);
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: rgba(255, 245, 230, 0.9);
+  }
+  #start-sub {
+    font-family: Georgia, serif; font-size: 12px;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
+  }
+  #start-error {
+    font-family: 'Courier New', monospace; font-size: 11px;
+    color: rgba(255,90,70,0.85); text-align: center;
+    max-width: 80vw; line-height: 1.6; display: none;
+  }
 </style>
-
 </head>
 <body>
 
 <video id="camera" autoplay playsinline muted></video>
-
 <div id="vignette"></div>
+<div id="suction-ring"></div>
 
-<!-- hand grip shadow (sits behind pin) -->
-
-<div id="hand-shadow"></div>
-
-<!-- Rolling pin wrapper + image
-     If rolling-pin.png is present in the repo, it will be used.
-     If not, a high-quality SVG data-URI fallback is used that
-     renders a convincingly realistic wooden rolling pin with
-     proper 3D shading, grain lines, and metal end caps — far
-     better than canvas shapes. -->
-
-<div id="pin-wrap">
-  <img id="pin-img" alt="" draggable="false"
-       onerror="useFallbackPin()">
+<div id="plunger-wrap">
+  <img id="plunger-img" alt="" draggable="false"
+       onerror="useFallback()">
 </div>
 
 <div id="start-screen">
-  <div id="start-icon">🥖</div>
+  <div id="start-icon">🪠</div>
   <div id="start-label">Tap to Throw</div>
-  <div id="start-sub">rolling pin throw</div>
+  <div id="start-sub">plunger throw</div>
   <div id="start-error"></div>
 </div>
 
 <script>
 /* ===================================================================
-   ██████  TUNING CONSTANTS  ██████
+   ████  TUNING CONSTANTS  ████
    ===================================================================
-   Tweak these to adjust the feel of the throw on your device.
+   All lengths in vw/vh/px. Angles in degrees.
 =================================================================== */
 
-// ── Pin image source ──────────────────────────────────────────────
-// Place a transparent PNG/WebP named rolling-pin.png in your repo
-// root for a photographic look. If the file is missing the built-in
-// SVG fallback is used automatically.
-const PIN_SRC = 'rolling-pin.png';
+// ── Image source ─────────────────────────────────────────────────
+// Place a transparent PNG named plunger.png in your repo root for
+// a photographic look. Missing file → built-in SVG fallback below.
+const PLUNGER_SRC = 'plunger.png';
 
-// ── Rest position (where pin sits before throw) ───────────────────
-// As % of viewport. Pin is right-anchored then offset by these.
-const PIN_REST_RIGHT_VW  = -8;   // vw from right edge (neg = off-screen)
-const PIN_REST_BOTTOM_VH = -6;   // vh from bottom edge (neg = off-screen)
+// ── Plunger size at rest ─────────────────────────────────────────
+const PLUNGER_WIDTH_VW = 38;   // width as % of viewport width
 
-// ── Pin size ──────────────────────────────────────────────────────
-const PIN_WIDTH_VW = 78;   // width as % of viewport width
+// ── Rest position (bottom-center, held like a weapon) ────────────
+// Negative bottom = partially off-screen for a natural "held" feel.
+const REST_BOTTOM_VH   = -8;   // vh from bottom edge
+// Horizontal offset from center: 0 = centered, positive = right.
+const REST_OFFSET_VW   = 6;    // vw nudge right of center
 
-// ── Pin rotation at rest (tipped so handle is lower-right) ────────
-const PIN_REST_ROT_DEG = -34;  // degrees (neg = barrel toward upper-left)
+// ── Rest rotation ────────────────────────────────────────────────
+// Cup points upward toward camera center. 0 = cup facing right.
+// -90 = cup pointing straight up (directly at camera).
+const REST_ROT_DEG     = -82;
 
-// ── Throw trajectory ──────────────────────────────────────────────
-// Angle (degrees) the pin travels during the throw.
-// 0 = straight right, -90 = straight up, -50 = upper-right typical.
-const THROW_ANGLE_DEG  = -62;
+// ── Throw target (where plunger sticks on screen) ────────────────
+// As % of viewport. 50/35 = upper-center, feels "in front of you."
+const TARGET_X_VW      = 50;   // % from left
+const TARGET_Y_VH      = 35;   // % from top
 
-// Distance the pin travels across the screen (in viewport widths).
-// 1.6 = pin fully exits the screen.
-const THROW_DISTANCE_VW = 1.65;
+// ── Throw speed / duration ───────────────────────────────────────
+const THROW_DURATION_MS  = 380;   // ms for plunger to reach target
+const WINDUP_MS          = 85;    // wind-up pull-back before launch
 
-// Throw duration in milliseconds.
-const THROW_DURATION_MS = 420;
+// ── Scale: plunger shrinks as it flies "away" ────────────────────
+const THROW_END_SCALE    = 0.55;  // scale at target (perspective shrink)
 
-// ── Spin ─────────────────────────────────────────────────────────
-// Total degrees of rotation during a single throw.
-// 720 = two full rotations, 1080 = three.
-const SPIN_TOTAL_DEG = 900;
+// ── Wobble during flight ─────────────────────────────────────────
+// Slight rotation oscillation while flying — not silly, just alive.
+const WOBBLE_DEG         = 12;    // max wobble angle each side
 
-// ── Wind-up before launch ─────────────────────────────────────────
-// Brief backward motion before the throw — makes it feel physical.
-const WINDUP_DIST_PX   = 28;   // pixels pulled back
-const WINDUP_ROT_DEG   = 14;   // extra rotation pulled back
-const WINDUP_MS        = 95;   // wind-up duration
+// ── Impact squash ────────────────────────────────────────────────
+// Squash on impact: scaleX grows, scaleY shrinks, simulating the
+// rubber cup compressing against the surface.
+const SQUASH_X           = 1.22;  // horizontal stretch on impact
+const SQUASH_Y           = 0.72;  // vertical squash on impact
+const SQUASH_MS          = 80;    // time to reach peak squash
+const SETTLE_MS          = 160;   // time to relax back to normal
 
-// ── Scale during flight (perspective shrink) ──────────────────────
-// Pin starts at 1.0 and scales to this value as it travels away.
-const THROW_END_SCALE  = 0.28;
+// ── Stick duration before reset ──────────────────────────────────
+const STICK_DURATION_MS  = 900;   // ms plunger stays stuck
 
-// ── Motion blur ───────────────────────────────────────────────────
-// Whether to apply a motion blur filter during peak throw speed.
-const MOTION_BLUR_ON   = true;
-const MOTION_BLUR_PX   = 5;    // max blur in pixels
-
-// ── Reset delay ───────────────────────────────────────────────────
-// ms after throw ends before pin reappears at rest position.
-const RESET_DELAY_MS   = 320;
+// ── Reset delay after stick ──────────────────────────────────────
+const RESET_DELAY_MS     = 200;   // ms between unstick and new plunger
 
 // ── Fire rate throttle ────────────────────────────────────────────
-// Minimum ms between throws (prevents accidental double-tap throws).
-const MIN_THROW_INTERVAL_MS = 600;
+const MIN_THROW_MS       = 700;
 
 /* ===================================================================
-   BUILT-IN SVG ROLLING PIN
-   ───────────────────────────────────────────────────────────────────
-   This SVG is a realistic wooden rolling pin rendered from a 3/4
-   perspective angle so it reads as 3D. It features:
-     • Warm maple-wood grain gradients with individual grain lines
-     • Cylindrical barrel with proper highlight + shadow rolls
-     • Brushed stainless steel end caps with radial reflections
-     • Cast shadow beneath for grounding
-   Much more convincing than flat canvas shapes.
-   Override by placing rolling-pin.png in your repo.
+   BUILT-IN SVG PLUNGER
+   ─────────────────────────────────────────────────────────────────
+   Viewed from slightly above-behind, cup pointing toward viewer.
+   Features: rubber cup with concentric fold rings, wooden handle,
+   metal ferrule, ambient occlusion shadow under cup.
+   Rendered in portrait orientation: cup at top, handle below.
 =================================================================== */
 const FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 640 200" width="640" height="200">
+  viewBox="0 0 200 520" width="200" height="520">
 <defs>
-  <!-- Wood grain base — warm maple -->
-  <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%"   stop-color="#f0c97a"/>
-    <stop offset="8%"   stop-color="#e8b85c"/>
-    <stop offset="22%"  stop-color="#dda03c"/>
-    <stop offset="38%"  stop-color="#c8882a"/>
-    <stop offset="52%"  stop-color="#b87020"/>
-    <stop offset="65%"  stop-color="#c88228"/>
-    <stop offset="78%"  stop-color="#dda030"/>
-    <stop offset="90%"  stop-color="#e8b84a"/>
-    <stop offset="100%" stop-color="#eed068"/>
-  </linearGradient>
-  <!-- Highlight roll across top of barrel -->
-  <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%"   stop-color="rgba(255,255,220,0.55)"/>
-    <stop offset="18%"  stop-color="rgba(255,240,180,0.22)"/>
-    <stop offset="55%"  stop-color="rgba(0,0,0,0)"/>
-    <stop offset="82%"  stop-color="rgba(0,0,0,0.18)"/>
-    <stop offset="100%" stop-color="rgba(0,0,0,0.34)"/>
-  </linearGradient>
-  <!-- End-cap steel gradient -->
-  <radialGradient id="cap" cx="40%" cy="35%" r="68%">
-    <stop offset="0%"   stop-color="#e8e8e8"/>
-    <stop offset="28%"  stop-color="#c0c0c0"/>
-    <stop offset="55%"  stop-color="#888"/>
-    <stop offset="78%"  stop-color="#aaa"/>
-    <stop offset="100%" stop-color="#666"/>
+  <!-- Rubber cup — deep red/maroon -->
+  <radialGradient id="cup" cx="42%" cy="38%" r="62%">
+    <stop offset="0%"   stop-color="#cc3322"/>
+    <stop offset="30%"  stop-color="#a02015"/>
+    <stop offset="65%"  stop-color="#7a1208"/>
+    <stop offset="100%" stop-color="#3d0804"/>
   </radialGradient>
-  <!-- End-cap for right side (slightly darker, facing away) -->
-  <radialGradient id="cap2" cx="60%" cy="40%" r="65%">
-    <stop offset="0%"   stop-color="#d0d0d0"/>
-    <stop offset="35%"  stop-color="#909090"/>
-    <stop offset="65%"  stop-color="#606060"/>
-    <stop offset="100%" stop-color="#484848"/>
+  <!-- Cup rim highlight -->
+  <radialGradient id="cupRim" cx="50%" cy="50%" r="50%">
+    <stop offset="0%"   stop-color="rgba(255,120,90,0.0)"/>
+    <stop offset="72%"  stop-color="rgba(255,120,90,0.0)"/>
+    <stop offset="88%"  stop-color="rgba(255,150,110,0.35)"/>
+    <stop offset="100%" stop-color="rgba(255,160,120,0.55)"/>
   </radialGradient>
-  <!-- Handle gradient -->
-  <linearGradient id="hnd" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%"   stop-color="#f2cc7e"/>
-    <stop offset="12%"  stop-color="#e0a840"/>
-    <stop offset="42%"  stop-color="#b87020"/>
-    <stop offset="68%"  stop-color="#c88228"/>
-    <stop offset="100%" stop-color="#e8b84a"/>
+  <!-- Handle wood -->
+  <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%"   stop-color="#c8843a"/>
+    <stop offset="12%"  stop-color="#e8a050"/>
+    <stop offset="30%"  stop-color="#f0b060"/>
+    <stop offset="50%"  stop-color="#e8a840"/>
+    <stop offset="68%"  stop-color="#c87828"/>
+    <stop offset="85%"  stop-color="#b06020"/>
+    <stop offset="100%" stop-color="#d08030"/>
   </linearGradient>
   <!-- Handle highlight -->
-  <linearGradient id="hhl" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%"   stop-color="rgba(255,250,200,0.5)"/>
-    <stop offset="30%"  stop-color="rgba(255,240,180,0.15)"/>
-    <stop offset="100%" stop-color="rgba(0,0,0,0.2)"/>
+  <linearGradient id="woodHL" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%"   stop-color="rgba(255,230,180,0.0)"/>
+    <stop offset="20%"  stop-color="rgba(255,240,200,0.35)"/>
+    <stop offset="48%"  stop-color="rgba(255,255,220,0.5)"/>
+    <stop offset="75%"  stop-color="rgba(255,230,180,0.15)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.0)"/>
   </linearGradient>
-  <!-- Collar ring gradient -->
-  <linearGradient id="col" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%"   stop-color="#d8d8d8"/>
-    <stop offset="30%"  stop-color="#a0a0a0"/>
-    <stop offset="60%"  stop-color="#686868"/>
-    <stop offset="100%" stop-color="#888"/>
+  <!-- Ferrule / metal collar -->
+  <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%"   stop-color="#707070"/>
+    <stop offset="18%"  stop-color="#c0c0c0"/>
+    <stop offset="40%"  stop-color="#e8e8e8"/>
+    <stop offset="58%"  stop-color="#b0b0b0"/>
+    <stop offset="78%"  stop-color="#606060"/>
+    <stop offset="100%" stop-color="#808080"/>
   </linearGradient>
-  <!-- Drop shadow filter -->
-  <filter id="ds" x="-8%" y="-30%" width="116%" height="200%">
-    <feDropShadow dx="0" dy="8" stdDeviation="7"
-      flood-color="rgba(0,0,0,0.55)"/>
+  <!-- Handle end knob -->
+  <radialGradient id="knob" cx="40%" cy="35%" r="65%">
+    <stop offset="0%"   stop-color="#f0b060"/>
+    <stop offset="55%"  stop-color="#c07828"/>
+    <stop offset="100%" stop-color="#804010"/>
+  </radialGradient>
+  <!-- Drop shadow -->
+  <filter id="shadow" x="-20%" y="-8%" width="140%" height="116%">
+    <feDropShadow dx="0" dy="5" stdDeviation="8"
+      flood-color="rgba(0,0,0,0.6)"/>
   </filter>
-  <!-- Subtle inner glow on barrel edge -->
-  <filter id="glow">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="b"/>
-    <feComposite in="SourceGraphic" in2="b" operator="over"/>
+  <filter id="softShadow" x="-30%" y="-10%" width="160%" height="130%">
+    <feDropShadow dx="2" dy="4" stdDeviation="5"
+      flood-color="rgba(0,0,0,0.45)"/>
   </filter>
 </defs>
 
-<!-- ── CAST SHADOW (underneath, blurred) ── -->
-<ellipse cx="320" cy="194" rx="290" ry="10"
-  fill="rgba(0,0,0,0.28)" filter="url(#ds)"/>
+<!-- ── AO shadow under cup ── -->
+<ellipse cx="100" cy="158" rx="72" ry="14"
+  fill="rgba(0,0,0,0.32)" filter="url(#softShadow)"/>
 
-<!-- ── LEFT HANDLE ── -->
-<rect x="4" y="72" width="92" height="56" rx="10"
-  fill="url(#hnd)" filter="url(#ds)"/>
-<rect x="4" y="72" width="92" height="56" rx="10"
-  fill="url(#hhl)"/>
-<!-- handle grain lines -->
-<line x1="18" y1="72" x2="18" y2="128" stroke="rgba(0,0,0,0.12)" stroke-width="1.2"/>
-<line x1="34" y1="72" x2="34" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
-<line x1="52" y1="72" x2="52" y2="128" stroke="rgba(0,0,0,0.10)" stroke-width="1.0"/>
-<line x1="70" y1="72" x2="70" y2="128" stroke="rgba(0,0,0,0.08)" stroke-width="0.8"/>
-<line x1="86" y1="72" x2="86" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
-<!-- handle end knob -->
-<ellipse cx="8" cy="100" rx="9" ry="26"
-  fill="url(#cap)" filter="url(#ds)"/>
+<!-- ── RUBBER CUP BODY ── -->
+<!-- Main dome of the cup -->
+<ellipse cx="100" cy="108" rx="72" ry="106"
+  fill="url(#cup)" filter="url(#shadow)"/>
 
-<!-- ── LEFT COLLAR ── -->
-<rect x="94" y="62" width="30" height="76" rx="5"
-  fill="url(#col)" filter="url(#ds)"/>
-<!-- collar highlight ring -->
-<rect x="94" y="62" width="10" height="76" rx="3"
-  fill="rgba(255,255,255,0.18)"/>
-<!-- collar screw detail -->
-<circle cx="109" cy="88"  r="3.5" fill="#555"/>
-<circle cx="109" cy="112" r="3.5" fill="#555"/>
-<circle cx="109" cy="88"  r="1.5" fill="#888"/>
-<circle cx="109" cy="112" r="1.5" fill="#888"/>
+<!-- Fold ring 1 — outer crease -->
+<ellipse cx="100" cy="148" rx="68" ry="18"
+  fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="3.5"/>
+<ellipse cx="100" cy="148" rx="68" ry="18"
+  fill="none" stroke="rgba(180,60,40,0.3)" stroke-width="1.5"/>
 
-<!-- ── MAIN BARREL ── -->
-<rect x="122" y="44" width="396" height="112" rx="18"
-  fill="url(#wg)" filter="url(#ds)"/>
-<!-- Barrel cylinder shading overlay -->
-<rect x="122" y="44" width="396" height="112" rx="18"
-  fill="url(#hl)"/>
-<!-- wood grain lines on barrel -->
-<line x1="148" y1="44" x2="144" y2="156" stroke="rgba(0,0,0,0.07)" stroke-width="1.4"/>
-<line x1="178" y1="44" x2="174" y2="156" stroke="rgba(100,50,0,0.08)" stroke-width="1.0"/>
-<line x1="210" y1="44" x2="206" y2="156" stroke="rgba(0,0,0,0.06)" stroke-width="1.2"/>
-<line x1="246" y1="44" x2="242" y2="156" stroke="rgba(100,50,0,0.07)" stroke-width="0.9"/>
-<line x1="284" y1="44" x2="280" y2="156" stroke="rgba(0,0,0,0.065)" stroke-width="1.1"/>
-<line x1="320" y1="44" x2="316" y2="156" stroke="rgba(100,50,0,0.06)" stroke-width="1.0"/>
-<line x1="358" y1="44" x2="354" y2="156" stroke="rgba(0,0,0,0.06)" stroke-width="1.2"/>
-<line x1="394" y1="44" x2="390" y2="156" stroke="rgba(100,50,0,0.07)" stroke-width="0.9"/>
-<line x1="430" y1="44" x2="426" y2="156" stroke="rgba(0,0,0,0.065)" stroke-width="1.0"/>
-<line x1="466" y1="44" x2="462" y2="156" stroke="rgba(100,50,0,0.06)" stroke-width="1.1"/>
-<line x1="498" y1="44" x2="494" y2="156" stroke="rgba(0,0,0,0.07)" stroke-width="0.9"/>
-<!-- subtle horizontal grain wave -->
-<path d="M122,82 Q200,78 280,84 Q360,90 440,82 Q500,76 518,80"
-  stroke="rgba(0,0,0,0.04)" stroke-width="1.5" fill="none"/>
-<path d="M122,118 Q200,114 280,120 Q360,126 440,118 Q500,112 518,116"
-  stroke="rgba(0,0,0,0.04)" stroke-width="1.5" fill="none"/>
-<!-- barrel top specular streak -->
-<rect x="130" y="48" width="380" height="18" rx="9"
-  fill="rgba(255,255,230,0.28)"/>
-<rect x="150" y="50" width="340" height="6" rx="3"
+<!-- Fold ring 2 -->
+<ellipse cx="100" cy="128" rx="58" ry="14"
+  fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2.8"/>
+
+<!-- Fold ring 3 -->
+<ellipse cx="100" cy="112" rx="46" ry="10"
+  fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="2.2"/>
+
+<!-- Fold ring 4 — tight near top -->
+<ellipse cx="100" cy="80" rx="30" ry="6"
+  fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.8"/>
+
+<!-- Cup rim highlight overlay -->
+<ellipse cx="100" cy="108" rx="72" ry="106"
+  fill="url(#cupRim)"/>
+
+<!-- Top specular highlight on cup dome -->
+<ellipse cx="82" cy="52" rx="22" ry="32"
+  fill="rgba(255,160,130,0.28)" transform="rotate(-15,82,52)"/>
+<ellipse cx="78" cy="44" rx="10" ry="16"
+  fill="rgba(255,200,180,0.22)" transform="rotate(-15,78,44)"/>
+
+<!-- Cup opening rim (dark ellipse at bottom of cup) -->
+<ellipse cx="100" cy="155" rx="66" ry="12"
+  fill="rgba(30,5,2,0.75)"/>
+<ellipse cx="100" cy="155" rx="60" ry="8"
+  fill="rgba(15,2,1,0.85)"/>
+
+<!-- ── FERRULE (metal collar connecting cup to handle) ── -->
+<rect x="82" y="155" width="36" height="28" rx="4"
+  fill="url(#metal)" filter="url(#softShadow)"/>
+<!-- ferrule groove lines -->
+<rect x="82" y="163" width="36" height="3" rx="0"
+  fill="rgba(0,0,0,0.3)"/>
+<rect x="82" y="170" width="36" height="3" rx="0"
+  fill="rgba(0,0,0,0.22)"/>
+<!-- ferrule highlight -->
+<rect x="86" y="156" width="14" height="26" rx="2"
   fill="rgba(255,255,255,0.18)"/>
 
-<!-- ── RIGHT COLLAR ── -->
-<rect x="516" y="62" width="30" height="76" rx="5"
-  fill="url(#col)" filter="url(#ds)"/>
-<rect x="536" y="62" width="10" height="76" rx="3"
-  fill="rgba(0,0,0,0.14)"/>
-<circle cx="531" cy="88"  r="3.5" fill="#555"/>
-<circle cx="531" cy="112" r="3.5" fill="#555"/>
-<circle cx="531" cy="88"  r="1.5" fill="#888"/>
-<circle cx="531" cy="112" r="1.5" fill="#888"/>
+<!-- ── WOODEN HANDLE ── -->
+<!-- Main shaft -->
+<rect x="88" y="180" width="24" height="290" rx="5"
+  fill="url(#wood)" filter="url(#softShadow)"/>
+<!-- Handle highlight / sheen -->
+<rect x="88" y="180" width="24" height="290" rx="5"
+  fill="url(#woodHL)"/>
+<!-- Wood grain lines -->
+<line x1="93"  y1="185" x2="93"  y2="465" stroke="rgba(0,0,0,0.09)" stroke-width="1.1"/>
+<line x1="98"  y1="183" x2="98"  y2="467" stroke="rgba(160,80,20,0.08)" stroke-width="0.9"/>
+<line x1="104" y1="183" x2="104" y2="467" stroke="rgba(0,0,0,0.07)" stroke-width="0.8"/>
+<line x1="110" y1="185" x2="110" y2="465" stroke="rgba(160,80,20,0.07)" stroke-width="0.9"/>
 
-<!-- ── RIGHT HANDLE ── -->
-<rect x="544" y="72" width="92" height="56" rx="10"
-  fill="url(#hnd)" filter="url(#ds)"/>
-<rect x="544" y="72" width="92" height="56" rx="10"
-  fill="url(#hhl)"/>
-<line x1="558" y1="72" x2="558" y2="128" stroke="rgba(0,0,0,0.12)" stroke-width="1.2"/>
-<line x1="574" y1="72" x2="574" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
-<line x1="592" y1="72" x2="592" y2="128" stroke="rgba(0,0,0,0.10)" stroke-width="1.0"/>
-<line x1="610" y1="72" x2="610" y2="128" stroke="rgba(0,0,0,0.08)" stroke-width="0.8"/>
-<line x1="626" y1="72" x2="626" y2="128" stroke="rgba(0,0,0,0.09)" stroke-width="0.9"/>
-<ellipse cx="632" cy="100" rx="9" ry="26"
-  fill="url(#cap2)" filter="url(#ds)"/>
+<!-- ── END KNOB ── -->
+<ellipse cx="100" cy="468" rx="16" ry="14"
+  fill="url(#knob)" filter="url(#softShadow)"/>
+<!-- knob highlight -->
+<ellipse cx="94" cy="462" rx="6" ry="5"
+  fill="rgba(255,210,150,0.4)"/>
+<!-- knob base ring -->
+<ellipse cx="100" cy="475" rx="14" ry="5"
+  fill="rgba(0,0,0,0.4)"/>
+
 </svg>`;
 
 /* ===================================================================
-   RUNTIME STATE
+   RUNTIME
 =================================================================== */
 const $cam    = document.getElementById('camera');
 const $start  = document.getElementById('start-screen');
 const $errEl  = document.getElementById('start-error');
-const $wrap   = document.getElementById('pin-wrap');
-const $img    = document.getElementById('pin-img');
-const $shadow = document.getElementById('hand-shadow');
+const $wrap   = document.getElementById('plunger-wrap');
+const $img    = document.getElementById('plunger-img');
+const $ring   = document.getElementById('suction-ring');
 
-let cameraReady  = false;
-let throwing     = false;
-let lastThrow    = 0;
+let cameraReady = false;
+let state       = 'idle';   // idle | windup | flying | stuck | resetting
+let lastThrow   = 0;
 
-// Rest transform (set by positionPin, reused on reset)
-let restLeft = 0, restTop = 0, restW = 0, restH = 0;
+// Cached rest-pose geometry (recalculated on resize)
+let REST = { left:0, top:0, w:0, h:0 };
 
 /* ===================================================================
-   FALLBACK: use inline SVG if rolling-pin.png is missing
+   FALLBACK SVG
 =================================================================== */
-function useFallbackPin() {
+function useFallback() {
   const blob = new Blob([FALLBACK_SVG], { type: 'image/svg+xml' });
-  const url  = URL.createObjectURL(blob);
-  $img.src   = url;
+  $img.src   = URL.createObjectURL(blob);
 }
 
-// Kick off with the external image; onerror will swap to SVG
-$img.src = PIN_SRC;
-$img.addEventListener('load', positionPin);
+$img.src = PLUNGER_SRC;
+$img.addEventListener('load', layoutRest);
 
 /* ===================================================================
-   PIN LAYOUT — called on load, resize, orientation change
+   LAYOUT — rest position geometry
 =================================================================== */
 function getSafeAreaBottom() {
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden;';
-  document.body.appendChild(probe);
-  const h = probe.getBoundingClientRect().height;
-  probe.remove();
+  const p = document.createElement('div');
+  p.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden;';
+  document.body.appendChild(p);
+  const h = p.getBoundingClientRect().height;
+  p.remove();
   return h;
 }
 
-function positionPin() {
+function layoutRest() {
   const vw  = window.innerWidth;
   const vh  = window.innerHeight;
   const sab = getSafeAreaBottom();
 
-  // Natural aspect ratio of whichever image loaded
   const ratio = ($img.naturalWidth && $img.naturalHeight)
     ? $img.naturalHeight / $img.naturalWidth
-    : 200 / 640; // SVG viewBox aspect
+    : 520 / 200;   // SVG aspect
 
-  const w = vw * (PIN_WIDTH_VW / 100);
+  const w = vw * (PLUNGER_WIDTH_VW / 100);
   const h = w * ratio;
 
-  const rightOff  = vw * (PIN_REST_RIGHT_VW  / 100);
-  const bottomOff = vh * (PIN_REST_BOTTOM_VH / 100);
+  const cx         = vw * 0.5 + vw * (REST_OFFSET_VW / 100);
+  const bottomOff  = vh * (REST_BOTTOM_VH / 100);
 
-  const left = vw - w + rightOff;
-  const top  = vh - h - bottomOff - sab;
+  REST = {
+    left: cx - w / 2,
+    top:  vh - h - bottomOff - sab,
+    w, h,
+    cx,
+    cy: vh - h / 2 - bottomOff - sab
+  };
 
-  restLeft = left;
-  restTop  = top;
-  restW    = w;
-  restH    = h;
-
-  applyRestPose(false);
-
-  // Size the hand shadow accordingly
-  $shadow.style.cssText = `
-    position: fixed; z-index: 19; pointer-events: none;
-    width:  ${w * 0.38}px;
-    height: ${h * 0.55}px;
-    left:   ${left + w * 0.58}px;
-    top:    ${top  + h * 0.42}px;
-    border-radius: 50%;
-    background: radial-gradient(ellipse at center,
-      rgba(0,0,0,0.45) 0%, transparent 70%);
-    transform: rotate(${PIN_REST_ROT_DEG}deg);
-    transition: opacity 0.25s ease;
-    opacity: 1;
-  `;
+  if (state === 'idle') applyRest(false);
 }
 
-function applyRestPose(animate) {
+function applyRest(animate) {
   $wrap.style.cssText = `
     position: fixed;
-    left:   ${restLeft}px;
-    top:    ${restTop}px;
-    width:  ${restW}px;
-    height: ${restH}px;
+    left:   ${REST.left}px;
+    top:    ${REST.top}px;
+    width:  ${REST.w}px;
+    height: ${REST.h}px;
     z-index: 20;
     pointer-events: none;
     will-change: transform, opacity;
-    transform-origin: center center;
-    transform: rotate(${PIN_REST_ROT_DEG}deg) scale(1);
+    transform-origin: 50% 18%;
+    transform: rotate(${REST_ROT_DEG}deg) scale(1);
     opacity: 1;
-    ${animate ? 'transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), opacity 0.18s ease;' : ''}
+    ${animate
+      ? 'transition: transform 0.24s cubic-bezier(0.34,1.5,0.64,1), opacity 0.2s ease;'
+      : 'transition: none;'}
   `;
 }
 
-window.addEventListener('resize', positionPin);
-window.addEventListener('orientationchange', () => setTimeout(positionPin, 340));
+window.addEventListener('resize', layoutRest);
+window.addEventListener('orientationchange', () => setTimeout(layoutRest, 340));
 
 /* ===================================================================
-   THROW ANIMATION
+   THROW STATE MACHINE
    ─────────────────────────────────────────────────────────────────
-   Three phases:
-     1. Wind-up  — pin pulls back slightly (WINDUP_MS)
-     2. Launch   — pin flies across screen with spin + shrink
-     3. Reset    — pin fades back to rest position
+   idle → windup → flying → squash → stuck → resetting → idle
 =================================================================== */
-function throwPin(tapX, tapY) {
+function startThrow(tapX, tapY) {
   const now = performance.now();
-  if (throwing || now - lastThrow < MIN_THROW_INTERVAL_MS) return;
-  throwing  = true;
+  if (state !== 'idle' || now - lastThrow < MIN_THROW_MS) return;
+  state     = 'windup';
   lastThrow = now;
 
-  if (navigator.vibrate) navigator.vibrate(22);
-  spawnTapRipple(tapX, tapY);
+  if (navigator.vibrate) navigator.vibrate(20);
+  spawnRipple(tapX, tapY);
 
-  const vw       = window.innerWidth;
-  const angleRad = THROW_ANGLE_DEG * Math.PI / 180;
-  const totalDist = vw * THROW_DISTANCE_VW;
-  const endX     = Math.cos(angleRad) * totalDist;
-  const endY     = Math.sin(angleRad) * totalDist;
+  // ── Compute world coords of start and end ──────────────────────
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
 
-  // ── Phase 1: Wind-up ──
-  $shadow.style.opacity = '0';
+  // Plunger cup tip (top of image at rest, before rotation)
+  // transform-origin is at 50% 18%, so cup tip ≈ that point
+  const startX = REST.left + REST.w * 0.50;
+  const startY = REST.top  + REST.h * 0.18;
 
+  const endX = vw * (TARGET_X_VW / 100);
+  const endY = vh * (TARGET_Y_VH / 100);
+
+  // Translation needed to move the transform-origin to the target
+  const dX = endX - startX;
+  const dY = endY - startY;
+
+  // ── Phase 1: Wind-up ──────────────────────────────────────────
+  $wrap.style.transformOrigin = '50% 18%';
   $wrap.style.transition =
-    `transform ${WINDUP_MS}ms cubic-bezier(0.4, 0, 0.6, 1)`;
-  $wrap.style.transform  =
-    `rotate(${PIN_REST_ROT_DEG - WINDUP_ROT_DEG}deg) translate(${-WINDUP_DIST_PX}px, ${WINDUP_DIST_PX * 0.5}px) scale(1.04)`;
+    `transform ${WINDUP_MS}ms cubic-bezier(0.4,0,0.6,1)`;
+  $wrap.style.transform =
+    `rotate(${REST_ROT_DEG + 10}deg) translate(0px, 26px) scale(1.05)`;
 
-  // ── Phase 2: Launch ──
+  // ── Phase 2: Flight ───────────────────────────────────────────
   setTimeout(() => {
-    const totalRot   = PIN_REST_ROT_DEG + SPIN_TOTAL_DEG;
-    const easing     = 'cubic-bezier(0.22, 0.8, 0.52, 0.98)';
-    const blurFilter = MOTION_BLUR_ON
-      ? `blur(${MOTION_BLUR_PX}px)`
-      : 'none';
+    state = 'flying';
 
-    $wrap.style.transition =
-      `transform ${THROW_DURATION_MS}ms ${easing},
-       opacity   ${THROW_DURATION_MS * 0.85}ms ease-in ${THROW_DURATION_MS * 0.15}ms,
-       filter    ${THROW_DURATION_MS}ms ${easing}`;
+    // Wobble: brief mid-air rotation deviation
+    const wobble = WOBBLE_DEG;
+    const midRot = REST_ROT_DEG - wobble;   // slight counter-rotate mid-air
 
-    $wrap.style.transform =
-      `translate(${endX}px, ${endY}px) rotate(${totalRot}deg) scale(${THROW_END_SCALE})`;
-    $wrap.style.opacity = '0';
-    $wrap.style.filter  = blurFilter;
+    // Two-step flight for wobble feel: first half rotates one way,
+    // second half corrects to ~0 (cup facing forward at target).
+    // We achieve this with a keyframe approach using a CSS animation
+    // injected directly on the element.
+    const flyId = `fly_${Date.now()}`;
+    const styleEl = document.createElement('style');
+    styleEl.id = flyId;
+    styleEl.textContent = `
+      @keyframes plunger_fly {
+        0%   { transform: translate(0px,       0px)       rotate(${REST_ROT_DEG}deg) scale(1); }
+        45%  { transform: translate(${dX*0.48}px, ${dY*0.48}px) rotate(${midRot}deg)        scale(${1 - (1-THROW_END_SCALE)*0.45}); }
+        100% { transform: translate(${dX}px,   ${dY}px)   rotate(-90deg)              scale(${THROW_END_SCALE}); }
+      }
+    `;
+    document.head.appendChild(styleEl);
 
-    // ── Phase 3: Reset ──
+    $wrap.style.transition = 'none';
+    $wrap.style.animation  =
+      `plunger_fly ${THROW_DURATION_MS}ms cubic-bezier(0.3,0.6,0.5,1) forwards`;
+
+    // ── Phase 3: Impact squash ────────────────────────────────────
     setTimeout(() => {
-      // Instantly snap back to rest (no transition) then fade in
-      $wrap.style.transition = 'none';
-      $wrap.style.filter     = 'none';
-      applyRestPose(false);
+      state = 'stuck';
+      document.head.removeChild(styleEl);
 
-      // Force reflow then animate in
+      // Lock position at target — remove animation, apply final transform
+      $wrap.style.animation = 'none';
+      $wrap.style.transform =
+        `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
+
+      // Squash: cup compresses horizontally, expands vertically
       void $wrap.offsetWidth;
-
       $wrap.style.transition =
-        `transform 0.28s cubic-bezier(0.34,1.4,0.64,1),
-         opacity   0.22s ease-out`;
-      $wrap.style.opacity = '1';
+        `transform ${SQUASH_MS}ms cubic-bezier(0.2,0.8,0.4,1)`;
+      $wrap.style.transform =
+        `translate(${dX}px, ${dY}px) rotate(-90deg)
+         scale(${THROW_END_SCALE})
+         scaleX(${SQUASH_X}) scaleY(${SQUASH_Y})`;
 
-      // Re-show hand shadow
-      $shadow.style.opacity = '1';
+      // Fire suction ring
+      showSuctionRing(endX, endY);
 
+      // Settle: relax back to natural shape (stuck)
       setTimeout(() => {
-        throwing = false;
-      }, 300);
+        $wrap.style.transition =
+          `transform ${SETTLE_MS}ms cubic-bezier(0.34,1.3,0.64,1)`;
+        $wrap.style.transform =
+          `translate(${dX}px, ${dY}px) rotate(-90deg) scale(${THROW_END_SCALE})`;
 
-    }, THROW_DURATION_MS + RESET_DELAY_MS);
+        // ── Phase 4: Reset ────────────────────────────────────────
+        setTimeout(() => {
+          state = 'resetting';
+          $wrap.style.transition = 'opacity 0.18s ease';
+          $wrap.style.opacity    = '0';
+
+          setTimeout(() => {
+            applyRest(false);
+            void $wrap.offsetWidth;
+            $wrap.style.transition =
+              'transform 0.26s cubic-bezier(0.34,1.4,0.64,1), opacity 0.22s ease';
+            $wrap.style.opacity = '1';
+            setTimeout(() => { state = 'idle'; }, 300);
+          }, RESET_DELAY_MS);
+
+        }, STICK_DURATION_MS);
+
+      }, SQUASH_MS);
+
+    }, THROW_DURATION_MS);
 
   }, WINDUP_MS);
 }
 
 /* ===================================================================
-   TAP RIPPLE EFFECT
+   SUCTION RING ANIMATION
 =================================================================== */
-function spawnTapRipple(x, y) {
+function showSuctionRing(x, y) {
+  $ring.style.transition = 'none';
+  $ring.style.left       = x + 'px';
+  $ring.style.top        = y + 'px';
+  $ring.style.opacity    = '0';
+  $ring.style.transform  = 'translate(-50%,-50%) scale(0.15)';
+  void $ring.offsetWidth;
+
+  // Burst out
+  $ring.style.transition =
+    'transform 0.18s cubic-bezier(0.2,0.8,0.4,1), opacity 0.12s ease-out';
+  $ring.style.opacity   = '1';
+  $ring.style.transform = 'translate(-50%,-50%) scale(1)';
+
+  // Hold then fade
+  setTimeout(() => {
+    $ring.style.transition =
+      'transform 0.55s ease-out, opacity 0.55s ease-out';
+    $ring.style.opacity   = '0';
+    $ring.style.transform = 'translate(-50%,-50%) scale(1.7)';
+  }, 180);
+}
+
+/* ===================================================================
+   TAP RIPPLE
+=================================================================== */
+function spawnRipple(x, y) {
   const el = document.createElement('div');
   el.className = 'tap-ripple';
   el.style.left = x + 'px';
   el.style.top  = y + 'px';
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 500);
+  setTimeout(() => el.remove(), 480);
 }
 
 /* ===================================================================
@@ -594,29 +596,25 @@ function spawnTapRipple(x, y) {
 async function startCamera() {
   if (cameraReady) return;
 
-  const tryStart = async (constraints) => {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    $cam.srcObject = stream;
+  const tryStart = async (c) => {
+    const s = await navigator.mediaDevices.getUserMedia(c);
+    $cam.srcObject = s;
     await $cam.play();
     cameraReady = true;
     $start.classList.add('hidden');
     setTimeout(() => { $start.style.display = 'none'; }, 650);
-    positionPin();
+    layoutRest();
   };
 
   try {
     await tryStart({
-      video: {
-        facingMode: { exact: 'environment' },
-        width:  { ideal: 1920 },
-        height: { ideal: 1080 }
-      },
+      video: { facingMode: { exact: 'environment' },
+               width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false
     });
   } catch {
-    try {
-      await tryStart({ video: { facingMode: 'environment' }, audio: false });
-    } catch (e) {
+    try { await tryStart({ video: { facingMode: 'environment' }, audio: false }); }
+    catch (e) {
       document.getElementById('start-label').textContent = 'Camera unavailable';
       $errEl.style.display = 'block';
       $errEl.textContent   = e.message;
@@ -629,21 +627,16 @@ async function startCamera() {
 =================================================================== */
 document.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  if (!cameraReady) {
-    startCamera();
-    return;
-  }
-  throwPin(e.clientX, e.clientY);
+  if (!cameraReady) { startCamera(); return; }
+  startThrow(e.clientX, e.clientY);
 }, { passive: false });
 
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /* ===================================================================
-   INITIAL LAYOUT
-   (image may already be in browser cache)
+   INIT
 =================================================================== */
-positionPin();
+layoutRest();
 </script>
-
 </body>
 </html>
