@@ -1,1 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{
+margin:0;
+overflow:hidden;
+background:black;
+}
 
+video{
+position:fixed;
+width:100%;
+height:100%;
+object-fit:cover;
+}
+
+#crosshair{
+position:absolute;
+top:50%;
+left:50%;
+width:40px;
+height:40px;
+border:3px solid red;
+border-radius:50%;
+transform:translate(-50%,-50%);
+}
+</style>
+</head>
+
+<body>
+
+<video id="camera" autoplay playsinline></video>
+<div id="crosshair"></div>
+
+<script>
+const video = document.getElementById("camera");
+
+navigator.mediaDevices.getUserMedia({
+video:{facingMode:"environment"}
+})
+.then(stream=>{
+video.srcObject = stream;
+});
+
+document.body.addEventListener("click",()=>{
+navigator.vibrate(50);
+});
+</script>
+
+</body>
+</html>
